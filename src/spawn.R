@@ -1,3 +1,5 @@
+% TODO: when submitting, need to check *.finished exists.  If so, delete it.
+
 submit_to_lsf <- function(command, stdout_file, stderr_file) {
 	cmd <- sprintf("bsub %s -o %s -e %s", command, stdout_file, stderr_file);
 	print(cmd);
