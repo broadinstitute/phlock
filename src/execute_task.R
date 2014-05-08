@@ -4,6 +4,6 @@ args <- commandArgs(TRUE);
 load(args[1]);
 source(script_name);
 
-fileConn<-file(paste(args[1], '.completed', sep=''))
-writeLines(c("Hello","World"), fileConn)
+fileConn<-file(completion_file)
+writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
 close(fileConn)

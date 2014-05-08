@@ -1,1 +1,3 @@
-spawn("square.R", c(1,2), "sum.R")
+source("src/spawn.R");
+
+spawn(c(1,2), "test/square_script/square.R", "test/square_script/sum.R")

@@ -1,33 +1,62 @@
+import argparse
 import sys
 import collections
+import os
+import csv
+import glob
+import subprocess
 
+# the various status codes for tasks
 CREATED = "Created"
 SUBMITTED = "Submitted"
 FINISHED = "Finished"
 
-Task = collections.named_tuple("Task", ["task_dir", "external_id", "status"])
+Task = collections.namedtuple("Task", ["task_dir", "external_id", "status"])
+
+def system(cmd):
+  print "EXEC %s:" % repr(cmd)
+  retcode = subprocess.call(cmd, env=modified_env, shell=True)
+  if retcode != 0:
+    raise Exception("Command terminated with exit status = %d" % retcode)
+  #os.system(cmd)
 
 def read_task_dirs(run_id):
-
+  dirs = []
+  for dirname in glob.glob("%s/job*" % run_id):
+    fn = "%s/task_dirs.txt" % dirname
+    if os.path.exists(fn):
+      with open(fn) as fd:
+        dirs.extend([x.strip() for x in fd.readlines()])
+  return dirs
+  
 def read_task_dependancies(run_id):
+  return []
 
 def is_finished(run_id, task_dir):
+  finished = os.path.exists("%s/finished-time.txt" % (task_dir))
+  #print "is_finished %s/finished-time.txt -> %s" % (task_dir, finished)
+  return finished
 
 class LocalQueue(object):
   def find_tasks(self, run_id):
     task_dirs = read_task_dirs(run_id)
-    return [ Task(task_dir, None, [], FINISHED if is_finished(run_id, task_dir) else CREATED ]
+    tasks = [ Task(task_dir, None, FINISHED if is_finished(run_id, task_dir) else CREATED) for task_dir in task_dirs ]
+    #print "tasks", tasks
+    return tasks
     
   def submit(self, task):
-    os.system("%s > %s/stdout.txt 2> %s/stderr.txt" % (task.executable, task.task_dir, task.task_dir))
+    system("bash %s/task.sh > %s/stdout.txt 2> %s/stderr.txt" % (task.task_dir, task.task_dir, task.task_dir))
     
   def kill(self, task):
     raise Exception("not implemented")
 
 class LsfQueue(object):
   def get_active_lsf_jobs(self):
-  
+    # exec bjobs 
+    raise Exception("unimplemented")
+    
   def read_task_external_ids(self, run_id):
+    raise Exception("unimplemented")
   
   def find_tasks(self, run_id):
     task_dirs = read_task_dirs(run_id)
@@ -50,20 +79,23 @@ class LsfQueue(object):
       else:
         return None
         
-    return [ Task(task_dir, get_external_id(task_dir), get_status(task_dir) ]
+    return [ Task(task_dir, get_external_id(task_dir), get_status(task_dir)) ]
     
   def submit(self, task):
-    os.system("bsub %s -o %s/stdout.txt -e %s/stderr.txt" % (task.executable, task.task_dir, task.task_dir))
+    system("bsub bash %s/task.sh -o %s/stdout.txt -e %s/stderr.txt" % (task.task_dir, task.task_dir, task.task_dir))
     
   def kill(self, task):
     raise Exception("bkill %s" % task.external_id)
 
 job_queue = LocalQueue()
+flock_home = os.path.dirname(os.path.realpath(__file__))
+modified_env=dict(os.environ)
+modified_env['FLOCK_HOME'] = flock_home
 
 def run(run_id, script, args):
-  os.system("R CMD BATCH %s %s" % script, " ".join(args))
+  system("R --vanilla --args %s < %s" % (" ".join(args), script))
   while True:
-    submitted_count = poll(run_id)
+    submitted_count = submit_created(run_id)
     if submitted_count == 0:
       break
 
@@ -88,6 +120,25 @@ def kill(run_id):
     #if task.status == CREATED:
     #  submit(task)
 
-command = sys.argv[1]
+if __name__ == "__main__":
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--local', help='foo help', action='store_true')
+  parser.add_argument('command', help='bar help')
+  parser.add_argument('run_id', help='bar help')
+  parser.add_argument('arg', nargs='*', help='bar help')
+  
+  args = parser.parse_args()
+  
+  print args
+  print "flock_home=%s" % flock_home
+  command = args.command
+  modified_env['FLOCK_RUN_DIR'] = os.path.abspath(args.run_id)
+  if command == "run":
+    run(args.run_id, args.arg[0], args.arg[1:])
+  elif command == "kill":
+    kill(args.run_id)
+  else:
+    raise Exception("Unknown command: %s" % command)
 
-if command == "run":
+#command = sys.argv[1]
+#if command == "run":

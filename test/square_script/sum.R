@@ -1,11 +1,15 @@
-filenames = param
 a = 0
 
-for(filename in filenames) {
-	load(filename)
+str(job_details);
+print("filenames");
+print(job_details);
+for(d in job_details) {
+	print("d");
+	print(d);
+	load(d$output_file)
 	a = a + squared
 }
 
 fileConn<-file(paste(run_dir, "/result.txt", sep=''))
-writeLines(a, fileConn)
+writeLines(sprintf("%f", a), fileConn)
 close(fileConn)
