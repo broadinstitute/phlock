@@ -11,7 +11,7 @@ CREATED = "Created"
 SUBMITTED = "Submitted"
 FINISHED = "Finished"
 
-Task = collections.namedtuple("Task", ["task_dir", "external_id", "status"])
+Task = collections.namedtuple("Task", ["task_dir", "external_id", "status", "full_path"])
 
 def system(cmd):
   print "EXEC %s:" % repr(cmd)
@@ -21,31 +21,52 @@ def system(cmd):
   #os.system(cmd)
 
 def read_task_dirs(run_id):
-  dirs = []
+  grouped_commands = {}
   for dirname in glob.glob("%s/job*" % run_id):
     fn = "%s/task_dirs.txt" % dirname
     if os.path.exists(fn):
       with open(fn) as fd:
-        dirs.extend([x.strip() for x in fd.readlines()])
-  return dirs
+        for line in fd.readlines():
+          line = line.strip()
+          i=line.find(" ")
+          group = int(line[:i])
+          command = line[i+1:]
+          
+          if group in grouped_commands:
+            commands = grouped_commands[group]
+          else:
+            commands = []
+            grouped_commands[group] = commands
+          
+          commands.append(command)
+  keys = grouped_commands.keys()
+  keys.sort()
   
-def read_task_dependancies(run_id):
-  return []
-
+  return [grouped_commands[k] for k in keys]
+  
 def is_finished(run_id, task_dir):
-  finished = os.path.exists("%s/finished-time.txt" % (task_dir))
+  finished = os.path.exists("%s/%s/finished-time.txt" % (run_id, task_dir))
   #print "is_finished %s/finished-time.txt -> %s" % (task_dir, finished)
   return finished
 
 class LocalQueue(object):
+  def __init__(self):
+    self._ran = set()
+  
   def find_tasks(self, run_id):
-    task_dirs = read_task_dirs(run_id)
-    tasks = [ Task(task_dir, None, FINISHED if is_finished(run_id, task_dir) else CREATED) for task_dir in task_dirs ]
-    #print "tasks", tasks
+    grouped_dirs = read_task_dirs(run_id)
+    tasks = []
+    for task_dirs in grouped_dirs:
+      tasks.extend([ Task(task_dir, None, FINISHED if is_finished(run_id, task_dir) else CREATED, run_id+"/"+task_dir) for task_dir in task_dirs ])
     return tasks
     
   def submit(self, task):
-    system("bash %s/task.sh > %s/stdout.txt 2> %s/stderr.txt" % (task.task_dir, task.task_dir, task.task_dir))
+    d = task.full_path
+    cmd = "bash %s/task.sh > %s/stdout.txt 2> %s/stderr.txt" % (d,d,d)
+    if cmd in self._ran:
+      raise Exception("Already ran %s once" % cmd)
+    system(cmd)
+    self._ran.add(cmd)
     
   def kill(self, task):
     raise Exception("not implemented")
@@ -93,7 +114,16 @@ modified_env=dict(os.environ)
 modified_env['FLOCK_HOME'] = flock_home
 
 def run(run_id, script, args):
-  system("R --vanilla --args %s < %s" % (" ".join(args), script))
+  if(os.path.exists(run_id)):
+    print "\"%s\" already exists. Aborting." % run_id
+    sys.exit(1)
+  
+  os.makedirs("%s/temp" % run_id)
+  temp_run_script = "%s/temp/run_script.R"%run_id
+  with open(temp_run_script, "w") as fd:
+    fd.write("source('%s/spawn.R');\n" % flock_home)
+    fd.write("source('%s');\n" % script)
+  system("R --vanilla --args %s < %s" % (" ".join(args), temp_run_script))
   while True:
     submitted_count = submit_created(run_id)
     if submitted_count == 0:
@@ -129,8 +159,8 @@ if __name__ == "__main__":
   
   args = parser.parse_args()
   
-  print args
-  print "flock_home=%s" % flock_home
+  #print args
+  #print "flock_home=%s" % flock_home
   command = args.command
   modified_env['FLOCK_RUN_DIR'] = os.path.abspath(args.run_id)
   if command == "run":
