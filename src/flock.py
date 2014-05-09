@@ -121,7 +121,7 @@ def run(run_id, script, args):
   os.makedirs("%s/temp" % run_id)
   temp_run_script = "%s/temp/run_script.R"%run_id
   with open(temp_run_script, "w") as fd:
-    fd.write("source('%s/spawn.R');\n" % flock_home)
+    fd.write("source('%s/flock_support.R');\n" % flock_home)
     fd.write("source('%s');\n" % script)
   system("R --vanilla --args %s < %s" % (" ".join(args), temp_run_script))
   while True:
