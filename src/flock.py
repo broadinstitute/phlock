@@ -11,6 +11,7 @@ import re
 CREATED = "Created"
 SUBMITTED = "Submitted"
 FINISHED = "Finished"
+FAILED = "Failed"
 WAITING = "Waiting for other jobs to finish"
 
 Task = collections.namedtuple("Task", ["task_dir", "external_id", "status", "full_path"])
@@ -58,20 +59,50 @@ def read_task_dirs(run_id):
         job_deps[gather_task] = set(scatter_tasks)
   return (task_dirs, job_deps)  
 
-def is_finished(run_id, task_dir):
+def finished_successfully(run_id, task_dir):
   finished = os.path.exists("%s/%s/finished-time.txt" % (run_id, task_dir))
   #print "is_finished %s/finished-time.txt -> %s" % (task_dir, finished)
   return finished
 
+def find_tasks(run_id, external_ids, active_external_ids):
+  task_dirs, job_deps = read_task_dirs(run_id)
+
+  def get_status(task_dir):
+    if task_dir in external_ids:
+      lsf_id = external_ids[task_dir]
+      if lsf_id in active_external_ids:
+        return SUBMITTED
+      else:
+        if finished_successfully(run_id, task_dir):
+          return FINISHED
+        else:
+          return FAILED
+    else:
+      all_deps_met = True
+      for dep in job_deps[task_dir]:
+        if get_status(dep) != FINISHED:
+          all_deps_met = False
+      if all_deps_met:
+        return CREATED
+      else:
+        return WAITING
+  
+  def get_external_id(task_dir):
+    return external_ids[task_dir] if task_dir in external_ids else None
+  
+  #for task_dirs in grouped_dirs:
+  tasks = []
+  tasks.extend([ Task(task_dir, get_external_id(task_dir), get_status(task_dir), run_id+"/"+task_dir) for task_dir in task_dirs ])
+
+  return tasks
+
 class LocalQueue(object):
   def __init__(self):
     self._ran = set()
+    self._extern_ids = {}
   
   def find_tasks(self, run_id):
-    task_dirs, task_deps = read_task_dirs(run_id)
-    tasks = []
-    tasks.extend([ Task(task_dir, None, FINISHED if is_finished(run_id, task_dir) else CREATED, run_id+"/"+task_dir) for task_dir in task_dirs ])
-    return tasks
+    return find_tasks(run_id, self._extern_ids, set())
 
   def submit(self, task):
     d = task.full_path
@@ -79,6 +110,7 @@ class LocalQueue(object):
     if cmd in self._ran:
       raise Exception("Already ran %s once" % cmd)
     system(cmd)
+    self._extern_ids[task.task_dir] = str(len(self._extern_ids))
     self._ran.add(cmd)
     
   def kill(self, task):
@@ -108,47 +140,20 @@ class LsfQueue(object):
         job_state = m.group(2)
         active_jobs.add(job_id)
     return active_jobs
-    
-  def find_tasks(self, run_id):
-    active_lsf_jobs = self.get_active_lsf_jobs()
-    task_dirs, job_deps = read_task_dirs(run_id)
-    tasks = []
 
-    external_ids = {}
+  def read_external_ids(self, run_id, task_dirs):
+    external_ids = collections.defaultdict(lambda:[])
     for task_dir in task_dirs:
       job_id_file = "%s/%s/lsf_job_id.txt" % (run_id, task_dir)
       print "Checking %s: %s" % (job_id_file, os.path.exists(job_id_file))
       if os.path.exists(job_id_file):
         with open(job_id_file) as fd:
           external_ids[task_dir] = fd.read()
-
-    def get_external_id(task_dir):
-      if task_dir in external_ids:
-        return external_ids[task_dir]
-      else:
-        return None
-
-    def get_status(task_dir):
-      if task_dir in external_ids:
-        lsf_id = get_external_id(task_dir)
-        if lsf_id in active_lsf_jobs:
-          return SUBMITTED
-        else:
-          return FINISHED
-      else:
-        all_deps_met = True
-        for dep in job_deps[task_dir]:
-          if get_status(dep) != FINISHED:
-            all_deps_met = False
-        if all_deps_met:
-          return CREATED
-        else:
-          return WAITING
-        
-    #for task_dirs in grouped_dirs:
-    tasks.extend([ Task(task_dir, get_external_id(task_dir), get_status(task_dir), run_id+"/"+task_dir) for task_dir in task_dirs ])
-
-    return tasks
+    
+  def find_tasks(self, run_id):
+    active_external_ids = self.get_active_lsf_jobs()
+    external_ids = self.read_external_ids(run_id, task_dirs)
+    return find_tasks(run_id, external_ids, active_external_ids)
     
   def submit(self, task):
     d = task.full_path
@@ -226,6 +231,9 @@ if __name__ == "__main__":
   parser.add_argument('arg', nargs='*', help='bar help')
   
   args = parser.parse_args()
+
+  if args.local:
+    job_queue = LocalQueue()
   
   #print args
   #print "flock_home=%s" % flock_home
