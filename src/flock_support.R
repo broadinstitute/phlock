@@ -47,7 +47,7 @@ flock.run <- function(inputs, task_script_name, gather_script_name, shared_param
 	param = gather_params;
 	script_name = gather_script_name;
 	save(run_dir, job_dir, job_details, param, script_name, completion_file, file=gather_input_file)
-	submit_command('2', 'gather/task.sh', paste(script_path, '/execute_task.R ', shared_params_file, ' ', gather_input_file, sep=''))
+	submit_command('2', 'gather/task.sh', paste('exec R --vanilla --args ', shared_params_file, ' ', gather_input_file, ' < ', script_path, '/execute_task.R', sep=''))
 
 	# write the list of task scripts
 	fileConn <- file(paste(run_dir, '/jobs/task_dirs.txt', sep=''))

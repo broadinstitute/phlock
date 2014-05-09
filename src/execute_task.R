@@ -1,4 +1,3 @@
-#!/usr/bin/Rscript --vanilla --default-packages=utils
 args <- commandArgs(TRUE);
 
 # load the global variables
