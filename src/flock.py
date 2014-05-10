@@ -12,7 +12,7 @@ CREATED = "Created"
 SUBMITTED = "Submitted"
 FINISHED = "Finished"
 FAILED = "Failed"
-WAITING = "Waiting for other jobs to finish"
+WAITING = "Waiting for other tasks to finish"
 
 Task = collections.namedtuple("Task", ["task_dir", "external_id", "status", "full_path"])
 
@@ -64,8 +64,7 @@ def finished_successfully(run_id, task_dir):
   #print "is_finished %s/finished-time.txt -> %s" % (task_dir, finished)
   return finished
 
-def find_tasks(run_id, external_ids, active_external_ids):
-  task_dirs, job_deps = read_task_dirs(run_id)
+def find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps):
 
   def get_status(task_dir):
     if task_dir in external_ids:
@@ -102,7 +101,9 @@ class LocalQueue(object):
     self._extern_ids = {}
   
   def find_tasks(self, run_id):
-    return find_tasks(run_id, self._extern_ids, set())
+    task_dirs, job_deps = read_task_dirs(run_id)
+    
+    return find_tasks(run_id, self._extern_ids, set(), task_dirs, job_deps)
 
   def submit(self, task):
     d = task.full_path
@@ -115,6 +116,7 @@ class LocalQueue(object):
     
   def kill(self, task):
     raise Exception("not implemented")
+
 
 class LsfQueue(object):
   def get_active_lsf_jobs(self):
@@ -145,15 +147,16 @@ class LsfQueue(object):
     external_ids = collections.defaultdict(lambda:[])
     for task_dir in task_dirs:
       job_id_file = "%s/%s/lsf_job_id.txt" % (run_id, task_dir)
-      print "Checking %s: %s" % (job_id_file, os.path.exists(job_id_file))
       if os.path.exists(job_id_file):
         with open(job_id_file) as fd:
           external_ids[task_dir] = fd.read()
+    return external_ids
     
   def find_tasks(self, run_id):
+    task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_lsf_jobs()
     external_ids = self.read_external_ids(run_id, task_dirs)
-    return find_tasks(run_id, external_ids, active_external_ids)
+    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps)
     
   def submit(self, task):
     d = task.full_path
@@ -177,6 +180,62 @@ class LsfQueue(object):
   def kill(self, task):
     raise Exception("bkill %s" % task.external_id)
 
+class LocalBgQueue(object):
+  def get_active_procs(self):
+    import getpass
+    handle = subprocess.Popen(["ps", "-u", getpass.getuser()], stdout=subprocess.PIPE)
+    stdout, stderr = handle.communicate()
+
+    #Output looks like:
+    # PID TTY           TIME CMD
+    # 2587 ttys000    0:00.02 -bash
+    # 8812 ttys000    0:01.56 fish    
+    lines = stdout.split("\n")
+    job_pattern = re.compile("\\s*(\\d+)\\s+.*")
+    active_jobs = set()
+    for line in lines[1:]:
+      if line == '':
+        continue
+      m = job_pattern.match(line)
+      if m == None:
+        print "Could not parse line from ps: %s" % repr(line)
+      else:
+        pid = m.group(1)
+        active_jobs.add(pid)
+    return active_jobs
+
+  def read_external_ids(self, run_id, task_dirs):
+    external_ids = collections.defaultdict(lambda:[])
+    for task_dir in task_dirs:
+      pid_file = "%s/%s/pid.txt" % (run_id, task_dir)
+      if os.path.exists(pid_file):
+        with open(pid_file) as fd:
+          external_ids[task_dir] = fd.read()
+    return external_ids
+    
+  def find_tasks(self, run_id):
+    task_dirs, job_deps = read_task_dirs(run_id)
+    active_external_ids = self.get_active_procs()
+    external_ids = self.read_external_ids(run_id, task_dirs)
+    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps)
+    
+  def submit(self, task):
+    d = task.full_path
+    stdout = open("%s/stdout.txt" % d, "w")
+    stderr = open("%s/stderr.txt" % d, "w")
+    cmd = ["bash", "%s/task.sh" % d]
+    print "EXEC: %s" % cmd
+    handle = subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
+    stdout.close()
+    stderr.close()
+    
+    with open("%s/pid.txt" % d, "w") as fd:
+      fd.write(str(handle.pid))
+    
+  def kill(self, task):
+    raise Exception("bkill %s" % task.external_id)
+
+
 job_queue = LsfQueue()
 flock_home = os.path.dirname(os.path.realpath(__file__))
 modified_env=dict(os.environ)
@@ -195,16 +254,31 @@ def run(run_id, script, args):
   system("R --vanilla --args %s < %s" % (" ".join(args), temp_run_script))
   poll(run_id)
 
+def print_table(rows):
+  col_count = len(rows[0])
+  col_widths = [max([len(str(row[i])) for row in rows])+3 for i in xrange(col_count)]
+
+  for row in rows:
+    row_str = []
+    for i in xrange(col_count):
+      cell = str(row[i])
+      row_str.append(cell)
+      row_str.append(" "*(col_widths[i]-len(cell)))
+    print "".join(row_str)
+
 def poll(run_id):
   while True:
-    submitted_count = submit_created(run_id)
+    tasks = job_queue.find_tasks(run_id)
+    rows =[["Task", "ID", "Status"]]
+    for task in tasks:
+      rows.append((task.task_dir, task.external_id, task.status))
+    print_table(rows)
+    submitted_count = submit_created(run_id, tasks)
     if submitted_count == 0:
       break
 
-def submit_created(run_id):
+def submit_created(run_id, tasks):
   submitted_count = 0
-  tasks = job_queue.find_tasks(run_id)
-  print "tasks: %s" % tasks
   for task in tasks:
     if task.status == CREATED:
       job_queue.submit(task)
@@ -226,6 +300,7 @@ def kill(run_id):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument('--local', help='foo help', action='store_true')
+  parser.add_argument('--localbg', help='foo help', action='store_true')
   parser.add_argument('command', help='bar help')
   parser.add_argument('run_id', help='bar help')
   parser.add_argument('arg', nargs='*', help='bar help')
@@ -234,6 +309,8 @@ if __name__ == "__main__":
 
   if args.local:
     job_queue = LocalQueue()
+  if args.localbg:
+    job_queue = LocalBgQueue()
   
   #print args
   #print "flock_home=%s" % flock_home
