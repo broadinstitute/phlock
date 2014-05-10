@@ -117,6 +117,16 @@ class LocalQueue(object):
   def kill(self, task):
     raise Exception("not implemented")
 
+def read_external_ids(run_id, task_dirs, expected_prefix):
+  external_ids = collections.defaultdict(lambda:[])
+  for task_dir in task_dirs:
+    job_id_file = "%s/%s/job_id.txt" % (run_id, task_dir)
+    if os.path.exists(job_id_file):
+      with open(job_id_file) as fd:
+        job_id = fd.read()
+        assert job_id.startswith(expected_prefix), "Job ID was expected to be %s but was %s" % (expected_prefix, job_id)
+        external_ids[task_dir] = job_id[len(expected_prefix):]
+  return external_ids
 
 class LsfQueue(object):
   def get_active_lsf_jobs(self):
@@ -143,19 +153,10 @@ class LsfQueue(object):
         active_jobs.add(job_id)
     return active_jobs
 
-  def read_external_ids(self, run_id, task_dirs):
-    external_ids = collections.defaultdict(lambda:[])
-    for task_dir in task_dirs:
-      job_id_file = "%s/%s/lsf_job_id.txt" % (run_id, task_dir)
-      if os.path.exists(job_id_file):
-        with open(job_id_file) as fd:
-          external_ids[task_dir] = fd.read()
-    return external_ids
-    
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_lsf_jobs()
-    external_ids = self.read_external_ids(run_id, task_dirs)
+    external_ids = read_external_ids(run_id, task_dirs, "LSF:")
     return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps)
     
   def submit(self, task):
@@ -174,8 +175,8 @@ class LsfQueue(object):
       raise Exception("Could not parse output from bsub: %s"%stdout)
       
     lsf_job_id = m.group(1)
-    with open("%s/lsf_job_id.txt" % d, "w") as fd:
-      fd.write(lsf_job_id)
+    with open("%s/job_id.txt" % d, "w") as fd:
+      fd.write("LSF:"+lsf_job_id)
     
   def kill(self, task):
     raise Exception("bkill %s" % task.external_id)
@@ -204,19 +205,10 @@ class LocalBgQueue(object):
         active_jobs.add(pid)
     return active_jobs
 
-  def read_external_ids(self, run_id, task_dirs):
-    external_ids = collections.defaultdict(lambda:[])
-    for task_dir in task_dirs:
-      pid_file = "%s/%s/pid.txt" % (run_id, task_dir)
-      if os.path.exists(pid_file):
-        with open(pid_file) as fd:
-          external_ids[task_dir] = fd.read()
-    return external_ids
-    
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_procs()
-    external_ids = self.read_external_ids(run_id, task_dirs)
+    external_ids = read_external_ids(run_id, task_dirs, "PID:")
     return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps)
     
   def submit(self, task):
@@ -229,8 +221,8 @@ class LocalBgQueue(object):
     stdout.close()
     stderr.close()
     
-    with open("%s/pid.txt" % d, "w") as fd:
-      fd.write(str(handle.pid))
+    with open("%s/job_id.txt" % d, "w") as fd:
+      fd.write("PID:"+str(handle.pid))
     
   def kill(self, task):
     raise Exception("bkill %s" % task.external_id)
@@ -287,9 +279,19 @@ def submit_created(run_id, tasks):
 
 def kill(run_id):
   tasks = job_queue.find_tasks(run_id)
+  kill_count = 0
   for task in tasks:
     if task.status == SUBMITTED:
       job_queue.kill(task)
+      kill_count += 1
+  print "%d jobs with status 'Submitted' killed" % kill_count
+
+def retry(run_id):
+  tasks = job_queue.find_tasks(run_id)
+  for task in tasks:
+    if task.status == FAILED:
+      os.unlink("%s/job_id.txt" % task.full_path)
+  poll(run_id)
 
 #def check(run_id):
 #  tasks = find_tasks(run_id)
@@ -322,6 +324,8 @@ if __name__ == "__main__":
     kill(args.run_id)
   elif command == "poll":
     poll(args.run_id)
+  elif command == "retry":
+    retry(args.run_id)
   else:
     raise Exception("Unknown command: %s" % command)
 
