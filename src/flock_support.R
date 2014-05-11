@@ -11,17 +11,19 @@ flock.run <- function(inputs, task_script_name, gather_script_name, shared_param
 		stopifnot(run_dir != '');
 	}
 
-	dir.create(paste(run_dir, '/jobs', sep=''), recursive=TRUE);
-	shared_params_file = paste(run_dir, '/jobs/shared_params.Rdata', sep='');
+  task.dir <- 'tasks';
+
+	dir.create(paste(run_dir, '/', task.dir, sep=''), recursive=TRUE);
+	shared_params_file = paste(run_dir, '/',task.dir,'/shared_params.Rdata', sep='');
 	save(shared_params, file=shared_params_file)
 	
 	created.jobs <- list()
 	submit_command <- function(group, name, cmd) {
-		fileConn <- file(paste(run_dir, '/jobs/', name, sep=''))
+		fileConn <- file(paste(run_dir, '/', task.dir, '/', name, sep=''))
 		writeLines(cmd, fileConn)
 		close(fileConn)
     
-    created.jobs[[length(created.jobs)+1]] = paste(group, ' ', paste('jobs/', dirname(name), sep=''), sep='')
+    created.jobs[[length(created.jobs)+1]] = paste(group, ' ', paste(task.dir, '/', dirname(name), sep=''), sep='')
     created.jobs <<- created.jobs
 	}
 
@@ -30,7 +32,7 @@ flock.run <- function(inputs, task_script_name, gather_script_name, shared_param
 	for(job.index in 1:length(inputs)) {
 		job.id = sprintf(id.fmt.str, job.index);
 		param = inputs[job.index];
-		job_dir = paste(run_dir, '/jobs/', job.id, sep='');
+		job_dir = paste(run_dir, '/', task.dir, '/', job.id, sep='');
 		dir.create(job_dir, recursive=TRUE);
 		input_file = paste(job_dir, '/input.Rdata', sep='')
 		output_file = paste(job_dir, '/output.Rdata', sep='')
@@ -41,16 +43,16 @@ flock.run <- function(inputs, task_script_name, gather_script_name, shared_param
 		job_details[[length(job_details)+1]] = list(run_dir=run_dir, job_dir=job_dir, input_file=input_file, output_file=output_file, script_name=script_name, param=param)
 	}
 
-	dir.create(paste(run_dir, '/jobs/gather', sep=''), recursive=TRUE);
-	gather_input_file = paste(run_dir, '/jobs/gather/input.Rdata', sep='')
-	completion_file = paste(run_dir, '/jobs/gather/finished-time.txt', sep='')
+	dir.create(paste(run_dir, '/',task.dir,'/gather', sep=''), recursive=TRUE);
+	gather_input_file = paste(run_dir, '/',task.dir,'/gather/input.Rdata', sep='')
+	completion_file = paste(run_dir, '/',task.dir,'/gather/finished-time.txt', sep='')
 	param = gather_params;
 	script_name = gather_script_name;
 	save(run_dir, job_dir, job_details, param, script_name, completion_file, file=gather_input_file)
 	submit_command('2', 'gather/task.sh', paste('exec R --vanilla --args ', shared_params_file, ' ', gather_input_file, ' < ', script_path, '/execute_task.R', sep=''))
 
 	# write the list of task scripts
-	fileConn <- file(paste(run_dir, '/jobs/task_dirs.txt', sep=''))
+	fileConn <- file(paste(run_dir, '/',task.dir,'/task_dirs.txt', sep=''))
 	#print(created.jobs);
 	#print(unlist(created.jobs));
 	writeLines(unlist(created.jobs), fileConn)

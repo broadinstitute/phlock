@@ -32,7 +32,7 @@ def read_task_dirs(run_id):
   """
   task_dirs = []
   job_deps = collections.defaultdict(lambda:set())
-  for dirname in glob.glob("%s/job*" % run_id):
+  for dirname in glob.glob("%s/tasks*" % run_id):
     fn = "%s/task_dirs.txt" % dirname
     if os.path.exists(fn):
       grouped_commands = {}
