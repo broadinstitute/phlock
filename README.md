@@ -5,18 +5,29 @@ This is a lightweight library for executing map/reduce style jobs.  (Perhaps "sc
 More specifically, in this library can be used to execute an R script on a vector of inputs, potentially submitting them to a queuing system where they'll execute asynchronously, and then 
 aggregate all of the results with a second R script.
 
+There are three types of R-scripts invoked:
+
+1. Top level script: The first script invoked which creates the other tasks.   This script will have access to "run_dir" and "flock_path"
+2. Per-task script: The script executed per each task.  This script will have access to the parameters "param", "run_dir", "flock_path", "job_dir", "input_file", "output_file", "completion_file", "script_name"
+3. Gather script: ...
+
 All state is coordinated on the filesystem under the following directory structure:
 
 ```
-/xchip/datasci/runs/[ID]
-/xchip/datasci/runs/[ID]/jobs/[JOBID]/stdout.txt
-/xchip/datasci/runs/[ID]/jobs/[JOBID]/stderr.txt
-/xchip/datasci/runs/[ID]/jobs/[JOBID]/task.sh
-/xchip/datasci/runs/[ID]/jobs/job_it_map.txt
-/xchip/datasci/runs/[ID]/jobs/log/[JOBID].txt
-/xchip/datasci/runs/[ID]/jobs/input/[JOBID]
-/xchip/datasci/runs/[ID]/jobs/output/[JOBID]
+[run_id]
+[run_id]/tasks
+[run_id]/tasks/task_dirs.txt
+[run_id]/tasks/[task_id]
+[run_id]/tasks/[task_id]/finished-time.txt 
+[run_id]/tasks/[task_id]/input.Rdata       
+[run_id]/tasks/[task_id]/job_id.txt        
+[run_id]/tasks/[task_id]/output.Rdata      
+[run_id]/tasks/[task_id]/stderr.txt        
+[run_id]/tasks/[task_id]/stdout.txt        
+[run_id]/tasks/[task_id]/task.sh
 ```
+
+"run_id" is chosen when the "flock" command is run.  "task_id" is assigned numerically for each task, and there'll be one additional task named "gather" run after all other tasks.
 
 ## A second attempt
 
@@ -32,9 +43,6 @@ I've written things like this before integrated in large systems, and from those
 the task id -> submission id mapping
 task id -> task id (dependancy mapping)
 next job-dir for run-id
-
-Write these to files?
-Update on resubmit?
 
 ### Example
 
@@ -61,7 +69,7 @@ options can be:
     -P project to give to LSF
     -q queue to use
 
-  --local execute locally
+  --local execute locally serially
 
 Should give an error if run-id exists
 
