@@ -85,6 +85,9 @@ def find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps):
           #log.warning("%s not in %s", lsf_id, active_external_ids)
           return FAILED
     else:
+      if finished_successfully(run_id, task_dir):
+        return FINISHED
+        
       all_deps_met = True
       for dep in job_deps[task_dir]:
         if get_status(dep) != FINISHED:
