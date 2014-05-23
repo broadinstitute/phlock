@@ -7,9 +7,9 @@ load(args[1]);
 load(args[2]);
 
 # run the per-task script
-source(script_name);
+source(flock_script_name);
 
 # write out record that task completed successfully
-fileConn<-file(completion_file)
+fileConn<-file(flock_completion_file)
 writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
 close(fileConn)

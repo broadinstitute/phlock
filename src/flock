@@ -356,10 +356,9 @@ def run(run_id, script_body, wait, maxsubmit):
   os.makedirs("%s/temp" % run_id)
   temp_run_script = "%s/temp/run_script.R"%run_id
   with open(temp_run_script, "w") as fd:
-    fd.write("#options(error = function() {traceback()})\n");
-    fd.write("run_dir <- '%s';\n" % (run_dir))
+    fd.write("flock_run_dir <- '%s';\n" % (run_dir))
     fd.write("flock_home <- '%s';\n" % (flock_home))
-#    fd.write("script_name <- '%s';\n" % (temp_run_script))
+#    fd.write("flock_script_name <- '%s';\n" % (temp_run_script))
     fd.write("source('%s/flock_support.R');\n" % flock_home)
     fd.write(script_body)
   system("R --vanilla < %s" % (temp_run_script))

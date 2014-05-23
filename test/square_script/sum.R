@@ -1,15 +1,15 @@
 a = 0
 
-str(job_details);
+str(flock_job_details);
 print("filenames");
-print(job_details);
-for(d in job_details) {
+print(flock_job_details);
+for(d in flock_job_details) {
 	print("d");
 	print(d);
-	load(d$output_file)
+	load(d$flock_output_file)
 	a = a + squared
 }
 
-fileConn<-file(paste(run_dir, "/result.txt", sep=''))
+fileConn<-file(paste(flock_run_dir, "/result.txt", sep=''))
 writeLines(sprintf("%f", a), fileConn)
 close(fileConn)
