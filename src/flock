@@ -323,7 +323,9 @@ def wait_for_completion(run_id):
   while not is_complete:
     time.sleep(sleep_time)
     sleep_time = min(30, sleep_time * 2)
-    is_complete = poll_once(run_id)
+    is_complete, submitted_count = poll_once(run_id)
+    if submitted_count > 0:
+      sleep_time = 1
     
   # tasks are all done, but were they all successful?
   tasks = job_queue.find_tasks(run_id)
@@ -345,7 +347,7 @@ def wait_for_completion(run_id):
     log.warn("Run failed (%d tasks failed). Exitting", len(failures))
     sys.exit(1)
     
-def run(run_id, script_body, wait):
+def run(run_id, script_body, wait, maxsubmit):
   run_dir = os.path.abspath(run_id)
   if(os.path.exists(run_id)):
     log.error("\"%s\" already exists. Aborting.", run_id)
@@ -361,7 +363,7 @@ def run(run_id, script_body, wait):
     fd.write("source('%s/flock_support.R');\n" % flock_home)
     fd.write(script_body)
   system("R --vanilla < %s" % (temp_run_script))
-  poll_once(run_id)
+  poll_once(run_id, maxsubmit=maxsubmit)
   if wait:
     wait_for_completion(run_id)
   else:
@@ -398,8 +400,9 @@ def check_and_print(run_id):
   print_task_table(rows)
   return tasks
 
-def poll_once(run_id):
+def poll_once(run_id, maxsubmit=None):
   is_complete = True
+  submitted_count = 0
   while True:
     tasks = check_and_print(run_id)
 
@@ -407,27 +410,26 @@ def poll_once(run_id):
       if task.status in [CREATED, SUBMITTED]:
         is_complete = False
     
-    submitted_count = submit_created(run_id, tasks)
-    if submitted_count == 0:
+    created_tasks = [t for t in tasks if t.status == CREATED]
+    if maxsubmit != None and len(created_tasks) > (maxsubmit - submitted_count):
+      created_tasks = created_tasks[:maxsubmit]
+      
+    for task in created_tasks:
+      job_queue.submit(task)
+    
+    submitted_count += len(created_tasks)
+    if len(created_tasks) == 0:
       break
 
-  return is_complete
+  return is_complete, submitted_count
 
 def poll(run_id, wait):
-  is_complete = poll_once(run_id)
+  is_complete, submitted_count = poll_once(run_id)
   if not is_complete:
     if wait:
       wait_for_completion(run_id)
     else:
       print "Jobs are running, but --nowait was specified, so exiting"
-
-def submit_created(run_id, tasks):
-  submitted_count = 0
-  for task in tasks:
-    if task.status == CREATED:
-      job_queue.submit(task)
-      submitted_count += 1
-  return submitted_count
 
 def kill(run_id):
   tasks = job_queue.find_tasks(run_id)
@@ -460,6 +462,7 @@ def load_config(filenames):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument('--nowait', help='foo help', action='store_true')
+  parser.add_argument('--maxsubmit', type=int)
   parser.add_argument('command', help='bar help')
   parser.add_argument('run_id', help='bar help')
   
@@ -494,7 +497,7 @@ if __name__ == "__main__":
   modified_env['FLOCK_RUN_DIR'] = os.path.abspath(run_id)
 
   if command == "run":
-    run(run_id, config.invoke, not args.nowait)
+    run(run_id, config.invoke, not args.nowait, args.maxsubmit)
   elif command == "kill":
     kill(run_id)
   elif command == "check":
@@ -505,3 +508,4 @@ if __name__ == "__main__":
     retry(run_id, not args.nowait)
   else:
     raise Exception("Unknown command: %s" % command)
+
