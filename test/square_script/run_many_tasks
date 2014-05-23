@@ -1,0 +1,3 @@
+invoke: |
+  source("test/square_script/run.R")
+  do.run(seq(1100))
