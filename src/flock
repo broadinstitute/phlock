@@ -25,12 +25,12 @@ log = logging.getLogger("flock")
 
 def timeit(method):
   def timed(*args, **kw):
-    print "starting %r" % (method.__name__,)
+    log.debug("starting %r" , method.__name__)
     start = time.time()
     result = method(*args, **kw)
     end = time.time()
     
-    print "executed %r in %.2f secs" % (method.__name__, (end-start))
+    log.debug("executed %r in %.2f secs", method.__name__, (end-start))
     return result
 
   return timed
@@ -345,7 +345,7 @@ def wait_for_completion(run_id):
     log.warn("Run failed (%d tasks failed). Exitting", len(failures))
     sys.exit(1)
     
-def run(run_id, script, args, wait):
+def run(run_id, script_body, wait):
   run_dir = os.path.abspath(run_id)
   if(os.path.exists(run_id)):
     log.error("\"%s\" already exists. Aborting.", run_id)
@@ -357,10 +357,10 @@ def run(run_id, script, args, wait):
     fd.write("#options(error = function() {traceback()})\n");
     fd.write("run_dir <- '%s';\n" % (run_dir))
     fd.write("flock_home <- '%s';\n" % (flock_home))
-    fd.write("script_name <- '%s';\n" % (script))
+#    fd.write("script_name <- '%s';\n" % (temp_run_script))
     fd.write("source('%s/flock_support.R');\n" % flock_home)
-    fd.write("source('%s');\n" % script)
-  system("R --vanilla --args %s < %s" % (" ".join(args), temp_run_script))
+    fd.write(script_body)
+  system("R --vanilla < %s" % (temp_run_script))
   poll_once(run_id)
   if wait:
     wait_for_completion(run_id)
@@ -445,42 +445,63 @@ def retry(run_id, wait):
       os.unlink("%s/job_id.txt" % task.full_path)
   poll(run_id, wait)
 
+import yaml
+Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke"])
+
+def load_config(filenames):
+  config = {}
+  for filename in filenames:
+    log.info("Reading config from %s", filename)
+    with open(filename) as f:
+      config.update(yaml.safe_load(f))
+
+  return Config(**config)
+
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
-  parser.add_argument('--local', help='foo help', action='store_true')
-  parser.add_argument('--localbg', help='foo help', action='store_true')
   parser.add_argument('--nowait', help='foo help', action='store_true')
-  parser.add_argument('--sge', help='foo help', action='store_true')
   parser.add_argument('command', help='bar help')
   parser.add_argument('run_id', help='bar help')
-  parser.add_argument('arg', nargs='*', help='bar help')
   
   args = parser.parse_args()
 
-  if args.local:
-    job_queue = LocalQueue()
-  if args.localbg:
-    job_queue = LocalBgQueue()
-  if args.sge:
-    job_queue = SGEQueue()
+  # load the config files
+  config_files = []
+    
+  flock_default_config = os.path.expanduser("~/.flock")
+  if os.path.exists(flock_default_config):
+    config_files.append(flock_default_config)
+  config_files.append(args.run_id)
   
-  #print args
-  #print "flock_home=%s" % flock_home
-
+  config = load_config(config_files)
+  
+  # now, interpret that config
+  if config.executor == "localbg":
+    job_queue = LocalBgQueue()
+  elif config.executor == "local":
+    job_queue = LocalQueue()
+  elif config.executor == "sge":
+    job_queue = SGEQueue()
+  elif config.executor == "lsf":
+    job_queue = LSFQueue()
+  else:
+    raise Exception("Unknown executor: %s" % config.executor)
+  
   command = args.command
-  modified_env['FLOCK_RUN_DIR'] = os.path.abspath(args.run_id)
+
+  run_id = os.path.join(config.base_run_dir, os.path.basename(args.run_id))
+  log.info("full run_id is \"%s\"", run_id)
+  modified_env['FLOCK_RUN_DIR'] = os.path.abspath(run_id)
+
   if command == "run":
-    run(args.run_id, args.arg[0], args.arg[1:], not args.nowait)
+    run(run_id, config.invoke, not args.nowait)
   elif command == "kill":
-    kill(args.run_id)
+    kill(run_id)
   elif command == "check":
-    check_and_print(args.run_id)
+    check_and_print(run_id)
   elif command == "poll":
-    poll(args.run_id, not args.nowait)
+    poll(run_id, not args.nowait)
   elif command == "retry":
-    retry(args.run_id, not args.nowait)
+    retry(run_id, not args.nowait)
   else:
     raise Exception("Unknown command: %s" % command)
-
-#command = sys.argv[1]
-#if command == "run":
