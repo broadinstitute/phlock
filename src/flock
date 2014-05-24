@@ -153,7 +153,10 @@ def read_external_ids(run_id, task_dirs, expected_prefix):
         external_ids[task_dir] = job_id[len(expected_prefix):]
   return external_ids
 
-class LsfQueue(object):
+class LSFQueue(object):
+  def __init__(self, bsub_options)
+    self.bsub_options = [] if len(bsub_options) == 0 else bsub_options.split(" ")
+    
   def get_active_lsf_jobs(self):
     handle = subprocess.Popen(["bjobs", "-w"], stdout=subprocess.PIPE)
     stdout, stderr = handle.communicate()
@@ -186,7 +189,9 @@ class LsfQueue(object):
     
   def submit(self, task):
     d = task.full_path
-    cmd = ["bsub", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d, "bash %s/task.sh" % d]
+    cmd = ["bsub", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d]
+    cmd.extend(self.bsub_options)
+    cmd.append("bash %s/task.sh" % d)
     log.info("EXEC: %s", cmd)
     handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     stdout, stderr = handle.communicate()
@@ -447,10 +452,10 @@ def retry(run_id, wait):
   poll(run_id, wait)
 
 import yaml
-Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke"])
+Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options"])
 
 def load_config(filenames):
-  config = {}
+  config = {"bsub_options":""}
   for filename in filenames:
     log.info("Reading config from %s", filename)
     with open(filename) as f:
@@ -485,7 +490,7 @@ if __name__ == "__main__":
   elif config.executor == "sge":
     job_queue = SGEQueue()
   elif config.executor == "lsf":
-    job_queue = LSFQueue()
+    job_queue = LSFQueue(config.bsub_options)
   else:
     raise Exception("Unknown executor: %s" % config.executor)
   
