@@ -10,6 +10,8 @@ import re
 import time
 import logging
 
+FLOCK_VERSION="1.0"
+
 # the various status codes for tasks
 CREATED = "Created"
 SUBMITTED = "Submitted"
@@ -361,6 +363,7 @@ def run(run_id, script_body, wait, maxsubmit):
   os.makedirs("%s/temp" % run_id)
   temp_run_script = "%s/temp/run_script.R"%run_id
   with open(temp_run_script, "w") as fd:
+    fd.write("flock_version <- c(%s);\n" % ", ".join(FLOCK_VERSION.split(".")) )
     fd.write("flock_run_dir <- '%s';\n" % (run_dir))
     fd.write("flock_home <- '%s';\n" % (flock_home))
 #    fd.write("flock_script_name <- '%s';\n" % (temp_run_script))
