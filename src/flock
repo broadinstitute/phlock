@@ -35,10 +35,10 @@ def timeit(method):
 
   return timed
 
-def system(cmd):
+def system(cmd, ignore_retcode=False):
   log.info("EXEC %s", repr(cmd))
   retcode = subprocess.call(cmd, env=modified_env, shell=True)
-  if retcode != 0:
+  if retcode != 0 and (not ignore_retcode):
     raise Exception("Command terminated with exit status = %d" % retcode)
   #os.system(cmd)
 
@@ -134,7 +134,7 @@ class LocalQueue(object):
     cmd = "bash %s/task.sh > %s/stdout.txt 2> %s/stderr.txt" % (d,d,d)
     if cmd in self._ran:
       raise Exception("Already ran %s once" % cmd)
-    system(cmd)
+    system(cmd, ignore_retcode=True)
     self._extern_ids[task.task_dir] = str(len(self._extern_ids))
     self._ran.add(cmd)
     
@@ -154,7 +154,7 @@ def read_external_ids(run_id, task_dirs, expected_prefix):
   return external_ids
 
 class LSFQueue(object):
-  def __init__(self, bsub_options)
+  def __init__(self, bsub_options):
     self.bsub_options = [] if len(bsub_options) == 0 else bsub_options.split(" ")
     
   def get_active_lsf_jobs(self):
@@ -311,7 +311,7 @@ class LocalBgQueue(object):
     raise Exception("bkill %s" % task.external_id)
 
 
-job_queue = LsfQueue()
+job_queue = LSFQueue("")
 flock_home = os.path.dirname(os.path.realpath(__file__))
 modified_env=dict(os.environ)
 modified_env['FLOCK_HOME'] = flock_home
@@ -451,15 +451,50 @@ def retry(run_id, wait):
       os.unlink("%s/job_id.txt" % task.full_path)
   poll(run_id, wait)
 
-import yaml
 Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options"])
+
+def parse_config(f):
+  props = {}
+  line_no = 0
+  while True:
+    line = f.readline()
+    line_no += 1
+    
+    if line == "":
+      break
+
+    # ignore comments
+    if line.strip().startswith("#"):
+      continue
+
+    # parse prop name and value
+    colon_pos = line.find(":")
+    if colon_pos < 0:
+      raise Exception("Did not find ':' in line %d" % line_no)
+    prop_name = line[:colon_pos].strip()
+    prop_value = line[colon_pos+1:].strip()
+
+    # handle quoted values
+    if prop_value[0] in ["\"", "'"]:
+      if len(prop_value) <= 1 or prop_value[-1] != prop_value[0]:
+        raise Exception("Could not find end of quoted string on line %d" % line_no)
+      prop_value = prop_value[1:-1].decode("string-escape")
+
+    # check to see if this was "invoke" property, in which case, consume the rest of the file as the script
+    # with no escaping
+    if prop_name == "invoke":
+      prop_value = f.read()
+    
+    props[prop_name] = prop_value
+
+  return props
 
 def load_config(filenames):
   config = {"bsub_options":""}
   for filename in filenames:
     log.info("Reading config from %s", filename)
     with open(filename) as f:
-      config.update(yaml.safe_load(f))
+      config.update(parse_config(f))
 
   return Config(**config)
 

@@ -1,6 +1,6 @@
 # TODO: when submitting, need to check *.finished exists.  If so, delete it.
 
-flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_common_state=NULL, gather_params=NULL, script_path=NULL, flock_run_dir=NULL) {
+flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_common_state=NULL, script_path=NULL, flock_run_dir=NULL) {
   if(is.null(script_path)) {
     script_path = Sys.getenv("FLOCK_HOME");
     stopifnot(script_path != '');
@@ -50,9 +50,9 @@ flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_c
   dir.create(paste(flock_run_dir, '/',task.dir,'/gather', sep=''), recursive=TRUE);
   gather_input_file = paste(flock_run_dir, '/',task.dir,'/gather/input.Rdata', sep='')
   flock_completion_file = paste(flock_run_dir, '/',task.dir,'/gather/finished-time.txt', sep='')
-  flock_per_task_state = gather_params;
+  flock_per_task_state = flock_job_details;
   flock_script_name = gather_script_name;
-  save(flock_run_dir, flock_job_dir, flock_job_details, flock_per_task_state, flock_script_name, flock_completion_file, file=gather_input_file)
+  save(flock_run_dir, flock_job_dir, flock_per_task_state, flock_script_name, flock_completion_file, file=gather_input_file)
   submit_command('2', 'gather/task.sh', paste('exec R --vanilla --args ', flock_common_state_file, ' ', gather_input_file, ' < ', script_path, '/execute_task.R', sep=''))
 
   # write the list of task scripts
