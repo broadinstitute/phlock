@@ -379,15 +379,19 @@ class Flock(object):
       print "Jobs are running, but --nowait was specified, so exiting"
 
   def print_task_table(self, rows, summarize=True):
-    if summarize and len(rows) > 20:
-      jobs_per_status = collections.defaultdict(lambda:0)
+    if summarize:
+      jobs_per_status = collections.defaultdict(lambda:[])
       for task_dir, external_id, status in rows[1:]:
-        jobs_per_status[status] += 1
+        jobs_per_status[status].append(task_dir)
       ks = jobs_per_status.keys()
       ks.sort()
-      rows = [['Status', 'Tasks with this status']]
+      rows = [['Status', 'Tasks', 'Task Ids']]
       for k in ks:
-        rows.append( (k, jobs_per_status[k]) )
+        examples = jobs_per_status[k]
+        count = len(examples)
+        if count > 4:
+          examples = examples[:4] + ["..."]
+        rows.append( (k, count, " ".join(examples)) )
 
     col_count = len(rows[0])
     col_widths = [max([len(str(row[i])) for row in rows])+3 for i in xrange(col_count)]
