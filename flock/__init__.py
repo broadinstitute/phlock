@@ -353,9 +353,9 @@ def wait_for_completion(run_id):
     log.warn("Run failed (%d tasks failed). Exitting", len(failures))
     sys.exit(1)
     
-def run(run_id, script_body, wait, maxsubmit):
+def run(run_id, script_body, wait, maxsubmit, bypass_exists_check):
   run_dir = os.path.abspath(run_id)
-  if(os.path.exists(run_id)):
+  if(not bypass_exists_check and os.path.exists(run_id)):
     log.error("\"%s\" already exists. Aborting.", run_id)
     sys.exit(1)
   
@@ -503,6 +503,7 @@ def load_config(filenames):
 def flock_cmd_line(cmd_line_args):
   parser = argparse.ArgumentParser()
   parser.add_argument('--nowait', help='foo help', action='store_true')
+  parser.add_argument('--test', help='Run a test job', action='store_true')
   parser.add_argument('--maxsubmit', type=int)
   parser.add_argument('command', help='bar help')
   parser.add_argument('run_id', help='bar help')
@@ -534,11 +535,16 @@ def flock_cmd_line(cmd_line_args):
   command = args.command
 
   run_id = os.path.join(config.base_run_dir, os.path.basename(args.run_id))
+  
+  if config.test:
+    modified_env['FLOCK_TEST_JOBCOUNT'] = "5"
+    run_id += "-test"
+
   log.info("full run_id is \"%s\"", run_id)
   modified_env['FLOCK_RUN_DIR'] = os.path.abspath(run_id)
 
   if command == "run":
-    run(run_id, config.invoke, not args.nowait, args.maxsubmit)
+    run(run_id, config.invoke, not args.nowait, args.maxsubmit, config.test)
   elif command == "kill":
     kill(run_id)
   elif command == "check":
