@@ -1,1 +1,1 @@
-flock.run(c(1,2), "test/one_job_fails/square.R", "test/one_job_fails/sum.R")
+do.run <- function(x) { flock.run(x, "test/one_job_fails/square.R", "test/one_job_fails/sum.R") }

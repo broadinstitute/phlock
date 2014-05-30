@@ -8,6 +8,7 @@ import subprocess
 import re
 import time
 import logging
+import shutil
 
 FLOCK_VERSION="1.0"
 
@@ -36,12 +37,6 @@ def timeit(method):
 
   return timed
 
-def system(cmd, ignore_retcode=False):
-  log.info("EXEC %s", repr(cmd))
-  retcode = subprocess.call(cmd, env=modified_env, shell=True)
-  if retcode != 0 and (not ignore_retcode):
-    raise Exception("Command terminated with exit status = %d" % retcode)
-  #os.system(cmd)
 
 def read_task_dirs(run_id):
   """ returns a tuple of (task_dirs, job_deps) where 
@@ -135,7 +130,7 @@ class LocalQueue(object):
     cmd = "bash %s/task.sh > %s/stdout.txt 2> %s/stderr.txt" % (d,d,d)
     if cmd in self._ran:
       raise Exception("Already ran %s once" % cmd)
-    system(cmd, ignore_retcode=True)
+    self.system(cmd, ignore_retcode=True)
     self._extern_ids[task.task_dir] = str(len(self._extern_ids))
     self._ran.add(cmd)
     
@@ -312,10 +307,6 @@ class LocalBgQueue(object):
     raise Exception("bkill %s" % task.external_id)
 
 
-job_queue = LSFQueue("")
-flock_home = os.path.dirname(os.path.realpath(__file__))
-modified_env=dict(os.environ)
-modified_env['FLOCK_HOME'] = flock_home
 
 def dump_file(filename):
   with open(filename) as fd:
@@ -323,135 +314,147 @@ def dump_file(filename):
       sys.stdout.write("  ")
       sys.stdout.write(line)
 
-def wait_for_completion(run_id):
-  is_complete = False
-  sleep_time = 1
-  while not is_complete:
-    time.sleep(sleep_time)
-    sleep_time = min(30, sleep_time * 2)
-    is_complete, submitted_count = poll_once(run_id)
-    if submitted_count > 0:
-      sleep_time = 1
-    
-  # tasks are all done, but were they all successful?
-  tasks = job_queue.find_tasks(run_id)
-  failures = []
-  for task in tasks:
-    if task.status == FAILED:
-      failures.append(task)
-  if len(failures) == 0:
-    log.info("Run %s completed successfully" % run_id)
-  else:
-    for task in failures:
-      log.warn("The following task failed: %s", task.full_path)
+class Flock(object):
+  def __init__(self, job_queue, flock_home, modified_env):
+    self.job_queue = job_queue
+    self.flock_home = flock_home
+    self.modified_env = modified_env
 
-    failure_dir = failures[0].full_path
-    log.info("Dumping stdout of first failure")
-    dump_file("%s/stdout.txt" % failure_dir)
-    log.info("Dumping stderr of first failure")
-    dump_file("%s/stderr.txt" % failure_dir)
-    log.warn("Run failed (%d tasks failed). Exitting", len(failures))
-    sys.exit(1)
-    
-def run(run_id, script_body, wait, maxsubmit, bypass_exists_check):
-  run_dir = os.path.abspath(run_id)
-  if(not bypass_exists_check and os.path.exists(run_id)):
-    log.error("\"%s\" already exists. Aborting.", run_id)
-    sys.exit(1)
-  
-  os.makedirs("%s/temp" % run_id)
-  temp_run_script = "%s/temp/run_script.R"%run_id
-  with open(temp_run_script, "w") as fd:
-    fd.write("flock_version <- c(%s);\n" % ", ".join(FLOCK_VERSION.split(".")) )
-    fd.write("flock_run_dir <- '%s';\n" % (run_dir))
-    fd.write("flock_home <- '%s';\n" % (flock_home))
-#    fd.write("flock_script_name <- '%s';\n" % (temp_run_script))
-    fd.write("source('%s/flock_support.R');\n" % flock_home)
-    fd.write(script_body)
-  system("R --vanilla < %s" % (temp_run_script))
-  poll_once(run_id, maxsubmit=maxsubmit)
-  if wait:
-    wait_for_completion(run_id)
-  else:
-    print "Jobs are running, but --nowait was specified, so exiting"
+  def system(self, cmd, ignore_retcode=False):
+    log.info("EXEC %s", repr(cmd))
+    retcode = subprocess.call(cmd, env=self.modified_env, shell=True)
+    if retcode != 0 and (not ignore_retcode):
+      raise Exception("Command terminated with exit status = %d" % retcode)
 
-def print_task_table(rows, summarize=True):
-  if summarize and len(rows) > 20:
-    jobs_per_status = collections.defaultdict(lambda:0)
-    for task_dir, external_id, status in rows[1:]:
-      jobs_per_status[status] += 1
-    ks = jobs_per_status.keys()
-    ks.sort()
-    rows = [['Status', 'Tasks with this status']]
-    for k in ks:
-      rows.append( (k, jobs_per_status[k]) )
-
-  col_count = len(rows[0])
-  col_widths = [max([len(str(row[i])) for row in rows])+3 for i in xrange(col_count)]
-
-  for row in rows:
-    row_str = []
-    for i in xrange(col_count):
-      cell = str(row[i])
-      row_str.append(cell)
-      row_str.append(" "*(col_widths[i]-len(cell)))
-    print "  "+("".join(row_str))
-
-def check_and_print(run_id):
-  tasks = job_queue.find_tasks(run_id)
-  rows =[["Task", "ID", "Status"]]
-  for task in tasks:
-    rows.append((task.task_dir, task.external_id, task.status))
-  log.info("Checking on tasks")
-  print_task_table(rows)
-  return tasks
-
-def poll_once(run_id, maxsubmit=None):
-  is_complete = True
-  submitted_count = 0
-  while True:
-    tasks = check_and_print(run_id)
-
-    for task in tasks:
-      if task.status in [CREATED, SUBMITTED]:
-        is_complete = False
-    
-    created_tasks = [t for t in tasks if t.status == CREATED]
-    if maxsubmit != None and len(created_tasks) > (maxsubmit - submitted_count):
-      created_tasks = created_tasks[:maxsubmit]
+  def wait_for_completion(self, run_id):
+    is_complete = False
+    sleep_time = 1
+    while not is_complete:
+      time.sleep(sleep_time)
+      sleep_time = min(30, sleep_time * 2)
+      is_complete, submitted_count = self.poll_once(run_id)
+      if submitted_count > 0:
+        sleep_time = 1
       
-    for task in created_tasks:
-      job_queue.submit(task)
+    # tasks are all done, but were they all successful?
+    tasks = self.job_queue.find_tasks(run_id)
+    failures = []
+    for task in tasks:
+      if task.status == FAILED:
+        failures.append(task)
+    if len(failures) == 0:
+      log.info("Run %s completed successfully" % run_id)
+    else:
+      for task in failures:
+        log.warn("The following task failed: %s", task.full_path)
+
+      failure_dir = failures[0].full_path
+      log.info("Dumping stdout of first failure")
+      dump_file("%s/stdout.txt" % failure_dir)
+      log.info("Dumping stderr of first failure")
+      dump_file("%s/stderr.txt" % failure_dir)
+      log.warn("Run failed (%d tasks failed). Exitting", len(failures))
+      sys.exit(1)
+      
+  def run(self, run_id, script_body, wait, maxsubmit):
+    run_dir = os.path.abspath(run_id)
+    if os.path.exists(run_id):
+      log.error("\"%s\" already exists. Aborting.", run_id)
+      sys.exit(1)
     
-    submitted_count += len(created_tasks)
-    if len(created_tasks) == 0:
-      break
-
-  return is_complete, submitted_count
-
-def poll(run_id, wait):
-  is_complete, submitted_count = poll_once(run_id)
-  if not is_complete:
+    os.makedirs("%s/temp" % run_id)
+    temp_run_script = "%s/temp/run_script.R"%run_id
+    with open(temp_run_script, "w") as fd:
+      fd.write("flock_version <- c(%s);\n" % ", ".join(FLOCK_VERSION.split(".")) )
+      fd.write("flock_run_dir <- '%s';\n" % (run_dir))
+      fd.write("flock_home <- '%s';\n" % (self.flock_home))
+  #    fd.write("flock_script_name <- '%s';\n" % (temp_run_script))
+      fd.write("source('%s/flock_support.R');\n" % self.flock_home)
+      fd.write(script_body)
+    self.system("R --vanilla < %s" % (temp_run_script))
+    self.poll_once(run_id, maxsubmit=maxsubmit)
     if wait:
-      wait_for_completion(run_id)
+      self.wait_for_completion(run_id)
     else:
       print "Jobs are running, but --nowait was specified, so exiting"
 
-def kill(run_id):
-  tasks = job_queue.find_tasks(run_id)
-  kill_count = 0
-  for task in tasks:
-    if task.status == SUBMITTED:
-      job_queue.kill(task)
-      kill_count += 1
-  log.info("%d jobs with status 'Submitted' killed", kill_count)
+  def print_task_table(self, rows, summarize=True):
+    if summarize and len(rows) > 20:
+      jobs_per_status = collections.defaultdict(lambda:0)
+      for task_dir, external_id, status in rows[1:]:
+        jobs_per_status[status] += 1
+      ks = jobs_per_status.keys()
+      ks.sort()
+      rows = [['Status', 'Tasks with this status']]
+      for k in ks:
+        rows.append( (k, jobs_per_status[k]) )
 
-def retry(run_id, wait):
-  tasks = job_queue.find_tasks(run_id)
-  for task in tasks:
-    if task.status == FAILED:
-      os.unlink("%s/job_id.txt" % task.full_path)
-  poll(run_id, wait)
+    col_count = len(rows[0])
+    col_widths = [max([len(str(row[i])) for row in rows])+3 for i in xrange(col_count)]
+
+    for row in rows:
+      row_str = []
+      for i in xrange(col_count):
+        cell = str(row[i])
+        row_str.append(cell)
+        row_str.append(" "*(col_widths[i]-len(cell)))
+      print "  "+("".join(row_str))
+
+  def check_and_print(self, run_id):
+    tasks = self.job_queue.find_tasks(run_id)
+    rows =[["Task", "ID", "Status"]]
+    for task in tasks:
+      rows.append((task.task_dir, task.external_id, task.status))
+    log.info("Checking on tasks")
+    self.print_task_table(rows)
+    return tasks
+
+  def poll_once(self, run_id, maxsubmit=None):
+    is_complete = True
+    submitted_count = 0
+    while True:
+      tasks = self.check_and_print(run_id)
+
+      for task in tasks:
+        if task.status in [CREATED, SUBMITTED]:
+          is_complete = False
+      
+      created_tasks = [t for t in tasks if t.status == CREATED]
+      if maxsubmit != None and len(created_tasks) > (maxsubmit - submitted_count):
+        created_tasks = created_tasks[:maxsubmit]
+        
+      for task in created_tasks:
+        self.job_queue.submit(task)
+      
+      submitted_count += len(created_tasks)
+      if len(created_tasks) == 0:
+        break
+
+    return is_complete, submitted_count
+
+  def poll(self, run_id, wait):
+    is_complete, submitted_count = self.poll_once(run_id)
+    if not is_complete:
+      if wait:
+        self.wait_for_completion(run_id)
+      else:
+        print "Jobs are running, but --nowait was specified, so exiting"
+
+  def kill(self, run_id):
+    tasks = self.job_queue.find_tasks(run_id)
+    kill_count = 0
+    for task in tasks:
+      if task.status == SUBMITTED:
+        self.job_queue.kill(task)
+        kill_count += 1
+    log.info("%d jobs with status 'Submitted' killed", kill_count)
+
+  def retry(self, run_id, wait):
+    tasks = self.job_queue.find_tasks(run_id)
+    for task in tasks:
+      if task.status == FAILED:
+        os.unlink("%s/job_id.txt" % task.full_path)
+    self.poll(run_id, wait)
 
 Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options"])
 
@@ -501,6 +504,11 @@ def load_config(filenames):
   return Config(**config)
 
 def flock_cmd_line(cmd_line_args):
+  job_queue = LSFQueue("")
+  flock_home = os.path.dirname(os.path.realpath(__file__))
+  modified_env=dict(os.environ)
+  modified_env['FLOCK_HOME'] = flock_home
+
   parser = argparse.ArgumentParser()
   parser.add_argument('--nowait', help='foo help', action='store_true')
   parser.add_argument('--test', help='Run a test job', action='store_true')
@@ -534,25 +542,32 @@ def flock_cmd_line(cmd_line_args):
   
   command = args.command
 
-  run_id = os.path.join(config.base_run_dir, os.path.basename(args.run_id))
+  run_id = os.path.abspath(os.path.join(config.base_run_dir, os.path.basename(args.run_id)))
   
-  if config.test:
+  if args.test:
     modified_env['FLOCK_TEST_JOBCOUNT'] = "5"
     run_id += "-test"
+    if os.path.exists(run_id):
+      log.warn("%s already exists -- removing before running job", run_id)
+      shutil.rmtree(run_id)
 
-  log.info("full run_id is \"%s\"", run_id)
+  log.info("Writing files to \"%s\", executing with %s", run_id, job_queue)
   modified_env['FLOCK_RUN_DIR'] = os.path.abspath(run_id)
 
+  f = Flock(job_queue, flock_home, modified_env)
+  job_queue.system = f.system
+
+
   if command == "run":
-    run(run_id, config.invoke, not args.nowait, args.maxsubmit, config.test)
+    f.run(run_id, config.invoke, not args.nowait, args.maxsubmit)
   elif command == "kill":
-    kill(run_id)
+    f.kill(run_id)
   elif command == "check":
-    check_and_print(run_id)
+    f.check_and_print(run_id)
   elif command == "poll":
-    poll(run_id, not args.nowait)
+    f.poll(run_id, not args.nowait)
   elif command == "retry":
-    retry(run_id, not args.nowait)
+    f.retry(run_id, not args.nowait)
   else:
     raise Exception("Unknown command: %s" % command)
 

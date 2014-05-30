@@ -1,0 +1,3 @@
+invoke: |
+  source("test/one_job_fails/run.R")
+  do.run(c(1,2))

@@ -7,6 +7,6 @@
 #     script_name
 #     r_path
 
-stopifnot(param == 1)
-squared = param ** 2
-save(squared, file=output_file)
+stopifnot(flock_per_task_state == 1)
+squared = flock_per_task_state ** 2
+save(squared, file=flock_output_file)

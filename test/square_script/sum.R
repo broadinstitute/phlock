@@ -1,9 +1,9 @@
 a = 0
 
-str(flock_job_details);
+str(flock_per_task_state);
 print("filenames");
-print(flock_job_details);
-for(d in flock_job_details) {
+print(flock_per_task_state);
+for(d in flock_per_task_state) {
 	print("d");
 	print(d);
 	load(d$flock_output_file)
