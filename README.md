@@ -7,11 +7,10 @@ aggregate all of the results with a second R script.
 
 There are three types of R-scripts invoked:
 
-1. Top level script: The first script invoked which creates the other tasks.   This script will have the following variables defined before it executes: "flock_run_dir"
-2. Per-task script: The script executed per each task.  This script will have the following variable defined: "flock_run_dir", "flock_job_dir", "flock_input_file", 
-"flock_output_file", "flock_script_name", "flock_per_task_state", "flock_common_state"
-3. Gather script: The final script executed after all jobs have completed successful.  This will have the following variables defined: "flock_run_dir", "flock_job_dir", 
-"flock_script_name", "flock_common_state" and "flock_job_details"
+1. Top level script: The first script invoked which creates the other tasks.   This script will have the following variables defined before it executes: `flock_run_dir`
+2. Per-task script: The script executed per each task.  This script will have the following variable defined: `flock_run_dir`, `flock_job_dir`, `flock_input_file`, `flock_output_file`, `flock_script_name`, `flock_per_task_state`, `flock_common_state`
+3. Gather script: The final script executed after all jobs have completed successful.  This will have the following variables defined: `flock_run_dir`, `flock_job_dir`, 
+`flock_script_name`, `flock_common_state` and `flock_job_details`
 
 All state is coordinated on the filesystem under the following directory structure:
 
