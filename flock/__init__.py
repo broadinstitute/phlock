@@ -195,7 +195,7 @@ class LSFQueue(object):
     #Stdout Example:
     #Job <6265891> is submitted to queue <bhour>.
     
-    bjob_id_pattern = re.compile("Job <(\\d+)> is submitted to queue.*")    
+    bjob_id_pattern = re.compile("Job <(\\d+)> is submitted.*")    
     m = bjob_id_pattern.match(stdout)
     if m == None:
       raise Exception("Could not parse output from bsub: %s"%stdout)
