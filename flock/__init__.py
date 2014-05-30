@@ -547,9 +547,6 @@ def flock_cmd_line(cmd_line_args):
   if args.test:
     modified_env['FLOCK_TEST_JOBCOUNT'] = "5"
     run_id += "-test"
-    if os.path.exists(run_id):
-      log.warn("%s already exists -- removing before running job", run_id)
-      shutil.rmtree(run_id)
 
   log.info("Writing files to \"%s\", executing with %s", run_id, job_queue)
   modified_env['FLOCK_RUN_DIR'] = os.path.abspath(run_id)
@@ -557,8 +554,11 @@ def flock_cmd_line(cmd_line_args):
   f = Flock(job_queue, flock_home, modified_env)
   job_queue.system = f.system
 
-
   if command == "run":
+    if args.test and os.path.exists(run_id):
+      log.warn("%s already exists -- removing before running job", run_id)
+      shutil.rmtree(run_id)
+
     f.run(run_id, config.invoke, not args.nowait, args.maxsubmit)
   elif command == "kill":
     f.kill(run_id)
