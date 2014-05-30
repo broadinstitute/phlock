@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import argparse
 import sys
 import collections
@@ -501,14 +500,14 @@ def load_config(filenames):
 
   return Config(**config)
 
-if __name__ == "__main__":
+def flock_cmd_line(cmd_line_args):
   parser = argparse.ArgumentParser()
   parser.add_argument('--nowait', help='foo help', action='store_true')
   parser.add_argument('--maxsubmit', type=int)
   parser.add_argument('command', help='bar help')
   parser.add_argument('run_id', help='bar help')
   
-  args = parser.parse_args()
+  args = parser.parse_args(cmd_line_args)
 
   # load the config files
   config_files = []
