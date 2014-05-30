@@ -93,22 +93,34 @@ The spawn method will return immediately after the jobs have been queued for exe
 Spawn only populates the run_dir with all the files that are needed.  After the top-level R script completes, flock will start submitting all of those tasks using which ever
 execution engine is configured.
 
-# To start a run.  By default, will wait for all tasks to complete.  Can be safely killed after all tasks have been submitted.
+### To start a run
+By default, will wait for all tasks to complete.  Can be safely killed after all tasks have been submitted.
+```
 flock run run-id
+```
 
 If the directory for the run already exists, it will abort to prevent overwriting existing files.
 
-# To print the state of all tasks which make up this task
+### To print the state of all tasks which make up this task
+```
 flock check run-id
+```
 
-# To take any failed jobs and resubmit them for execution again.
+### Resubmit all failed jobs for execution again.
+```
 flock retry run-id
+```
 
-# To kill all running tasks associated with a run
+### To kill all running tasks associated with a run
+```
 flock kill run-id
+```
 
-# To monitor (will print task states until all tasks are done) a run
+### To monitor a run
+Will print task states until all tasks are done
+```
 flock poll run-id
+```
 
 # tasks get assigned one of three states: 
 1. Created (this task exists only on disk)
