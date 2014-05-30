@@ -122,7 +122,8 @@ Will print task states until all tasks are done
 flock poll run-id
 ```
 
-# tasks get assigned one of three states: 
+## Tasks states
+Tasks get assigned one of three states: 
 1. Created (this task exists only on disk)
 2. Submitting (this task has been submitted to the execution engine)
 3. Finished (this task successfully completed)
