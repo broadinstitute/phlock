@@ -1,0 +1,5 @@
+base_run_dir: /tmp/runs
+executor: localbg
+invoke: |
+  source("sum_of_squares.R")
+  sum.of.squares(c(2,3,5))
