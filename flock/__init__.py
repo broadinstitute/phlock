@@ -400,6 +400,7 @@ class Flock(object):
         row_str.append(" "*(col_widths[i]-len(cell)))
       print "  "+("".join(row_str))
 
+
   def check_and_print(self, run_id):
     tasks = self.job_queue.find_tasks(run_id)
     rows =[["Task", "ID", "Status"]]
@@ -548,7 +549,7 @@ def flock_cmd_line(cmd_line_args):
     modified_env['FLOCK_TEST_JOBCOUNT'] = "5"
     run_id += "-test"
 
-  log.info("Writing files to \"%s\", executing with %s", run_id, job_queue)
+  log.info("Writing run to \"%s\"", run_id)
   modified_env['FLOCK_RUN_DIR'] = os.path.abspath(run_id)
 
   f = Flock(job_queue, flock_home, modified_env)

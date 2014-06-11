@@ -1,0 +1,4 @@
+
+invoke: |
+  source("test/square_script/sum_of_squares.R")
+  sum.of.squares(c(2,3,5))
