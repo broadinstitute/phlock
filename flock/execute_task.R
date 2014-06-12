@@ -6,6 +6,10 @@ load(args[1]);
 # load the per-task variables
 load(args[2]);
 
+fileConn<-file(flock_starting_file)
+writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
+close(fileConn)
+
 # run the per-task script
 source(flock_script_name);
 

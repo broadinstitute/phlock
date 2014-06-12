@@ -50,7 +50,8 @@ flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_c
     flock_output_file = paste(flock_job_dir, '/output.Rdata', sep='')
     flock_script_name = task_script_name;
     flock_completion_file = paste(flock_job_dir, '/finished-time.txt', sep='')
-    save(flock_run_dir, flock_job_dir, flock_input_file, flock_output_file, flock_script_name, flock_per_task_state, flock_completion_file, file=flock_input_file)
+    flock_starting_file = paste(flock_job_dir, '/started-time.txt', sep='')
+    save(flock_starting_file, flock_run_dir, flock_job_dir, flock_input_file, flock_output_file, flock_script_name, flock_per_task_state, flock_completion_file, file=flock_input_file)
     submit_command('1', paste(job.subdir, '/task.sh', sep=''), paste('exec R --vanilla --args ', flock_common_state_file, ' ', flock_input_file, ' < ', script_path, '/execute_task.R', sep=''))
     flock_job_details[[length(flock_job_details)+1]] = list(flock_run_dir=flock_run_dir, flock_job_dir=flock_job_dir, flock_input_file=flock_input_file, flock_output_file=flock_output_file, flock_script_name=flock_script_name, flock_per_task_state=flock_per_task_state)
   }
@@ -58,9 +59,10 @@ flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_c
   dir.create(paste(flock_run_dir, '/',task.dir,'/gather', sep=''), recursive=TRUE);
   gather_input_file = paste(flock_run_dir, '/',task.dir,'/gather/input.Rdata', sep='')
   flock_completion_file = paste(flock_run_dir, '/',task.dir,'/gather/finished-time.txt', sep='')
+  flock_starting_file = paste(flock_run_dir, '/',task.dir,'/gather/started-time.txt', sep='')
   flock_per_task_state = flock_job_details;
   flock_script_name = gather_script_name;
-  save(flock_run_dir, flock_job_dir, flock_per_task_state, flock_script_name, flock_completion_file, file=gather_input_file)
+  save(flock_starting_file, flock_run_dir, flock_job_dir, flock_per_task_state, flock_script_name, flock_completion_file, file=gather_input_file)
   submit_command('2', 'gather/task.sh', paste('exec R --vanilla --args ', flock_common_state_file, ' ', gather_input_file, ' < ', script_path, '/execute_task.R', sep=''))
 
   # write the list of task scripts
