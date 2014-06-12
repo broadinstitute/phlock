@@ -18,6 +18,7 @@ SUBMITTED = "Submitted"
 FINISHED = "Finished"
 FAILED = "Failed"
 WAITING = "Waiting for other tasks to finish"
+UNKNOWN = "Missing"
 
 Task = collections.namedtuple("Task", ["task_dir", "external_id", "status", "full_path"])
 
@@ -79,32 +80,59 @@ def finished_successfully(run_id, task_dir):
   #print "is_finished %s/finished-time.txt -> %s" % (task_dir, finished)
   return finished
 
-@timeit
-def find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps):
+class TaskStatusCache:
+  def __init__(self):
+    self.missing_since = collections.defaultdict(lambda: None)
+    self.finished_successfully = set()
+  
+  def update_failure(self, task_dir, is_running):
+    if is_running:
+      self.missing_since[task_dir] = None
+    else:
+      if self.missing_since[task_dir] == None:
+        self.missing_since[task_dir] = time.time()
+  
+  def definitely_failed(self, task_dir):
+    " returns true if we're sure we've failed -- that is, we've been missing this task for > 5 seconds "
+    t = self.missing_since[task_dir]
+    if t == None:
+      return False
+    return time.time() - t > 5
+  
+  def _finished_successfully(self, run_id, task_dir):
+    if not (task_dir in self.finished_successfully) and finished_successfully(run_id, task_dir):
+      self.finished_successfully.add(task_dir)
+    return task_dir in self.finished_successfully
+    
+  def get_status(self, run_id, external_ids, active_external_ids, task_dir, job_deps):
+    if self._finished_successfully(run_id, task_dir):
+      return FINISHED
 
-  def get_status(task_dir):
     if task_dir in external_ids:
       lsf_id = external_ids[task_dir]
       if lsf_id in active_external_ids:
+        self.update_failure(task_dir, True)
         return SUBMITTED
       else:
-        if finished_successfully(run_id, task_dir):
-          return FINISHED
-        else:
-          #log.warning("%s not in %s", lsf_id, active_external_ids)
+        self.update_failure(task_dir, False)
+        if self.definitely_failed(task_dir):
           return FAILED
+        else:
+          return UNKNOWN
     else:
-      if finished_successfully(run_id, task_dir):
-        return FINISHED
-        
       all_deps_met = True
       for dep in job_deps[task_dir]:
-        if get_status(dep) != FINISHED:
+        if self.get_status(run_id, external_ids, active_external_ids, dep, job_deps) != FINISHED:
           all_deps_met = False
       if all_deps_met:
         return CREATED
       else:
         return WAITING
+
+@timeit
+def find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, cache):
+  def get_status(task_dir):
+    return cache.get_status(run_id, external_ids, active_external_ids, task_dir, job_deps)
   
   def get_external_id(task_dir):
     return external_ids[task_dir] if task_dir in external_ids else None
@@ -119,11 +147,12 @@ class LocalQueue(object):
   def __init__(self):
     self._ran = set()
     self._extern_ids = {}
+    self.cache = TaskStatusCache()
   
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
     
-    return find_tasks(run_id, self._extern_ids, set(), task_dirs, job_deps)
+    return find_tasks(run_id, self._extern_ids, set(), task_dirs, job_deps, cache)
 
   def submit(self, task):
     d = task.full_path
@@ -152,6 +181,7 @@ def read_external_ids(run_id, task_dirs, expected_prefix):
 class LSFQueue(object):
   def __init__(self, bsub_options):
     self.bsub_options = [] if len(bsub_options) == 0 else bsub_options.split(" ")
+    self.cache = TaskStatusCache()
     
   def get_active_lsf_jobs(self):
     handle = subprocess.Popen(["bjobs", "-w"], stdout=subprocess.PIPE)
@@ -181,7 +211,7 @@ class LSFQueue(object):
     task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_lsf_jobs()
     external_ids = read_external_ids(run_id, task_dirs, "LSF:")
-    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps)
+    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
     
   def submit(self, task):
     d = task.full_path
@@ -208,6 +238,9 @@ class LSFQueue(object):
     raise Exception("bkill %s" % task.external_id)
 
 class SGEQueue(object):
+  def __init__(self):
+    self.cache = TaskStatusCache()
+    
   def get_active_sge_jobs(self):
     handle = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
     stdout, stderr = handle.communicate()
@@ -234,7 +267,7 @@ class SGEQueue(object):
     task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_sge_jobs()
     external_ids = read_external_ids(run_id, task_dirs, "SGE:")
-    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps)
+    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
     
   def submit(self, task):
     d = task.full_path
@@ -259,6 +292,9 @@ class SGEQueue(object):
     raise Exception("qkill %s" % task.external_id)
 
 class LocalBgQueue(object):
+  def __init__(self):
+    self.cache = TaskStatusCache()
+    
   def get_active_procs(self):
     import getpass
     cmd = ["ps", "-o", "pid", "-u", getpass.getuser()]
@@ -288,7 +324,7 @@ class LocalBgQueue(object):
     task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_procs()
     external_ids = read_external_ids(run_id, task_dirs, "PID:")
-    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps)
+    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
     
   def submit(self, task):
     d = task.full_path
@@ -421,7 +457,7 @@ class Flock(object):
       tasks = self.check_and_print(run_id)
 
       for task in tasks:
-        if task.status in [CREATED, SUBMITTED]:
+        if task.status in [CREATED, SUBMITTED, UNKNOWN]:
           is_complete = False
       
       created_tasks = [t for t in tasks if t.status == CREATED]
@@ -474,7 +510,7 @@ def parse_config(f):
       break
 
     # ignore comments
-    if line.strip().startswith("#"):
+    if line.strip().startswith("#") or len(line.strip()) == 0:
       continue
 
     # parse prop name and value
@@ -485,7 +521,7 @@ def parse_config(f):
     prop_value = line[colon_pos+1:].strip()
 
     # handle quoted values
-    if prop_value[0] in ["\"", "'"]:
+    if len(prop_value) > 0 and prop_value[0] in ["\"", "'"]:
       if len(prop_value) <= 1 or prop_value[-1] != prop_value[0]:
         raise Exception("Could not find end of quoted string on line %d" % line_no)
       prop_value = prop_value[1:-1].decode("string-escape")
