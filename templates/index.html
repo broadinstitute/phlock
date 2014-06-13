@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+  <h1>Star cluster manager</h1>
+  
+  <ul>
+  	<li><a href="/test-run">test</a></li>
+    <li><a href="/start">start cluster</a></li>
+  	<li><a href="/terminate">terminate cluster</a></li>
+  	<li><a href="/add-node">add nodes</a></li>
+  </ul>
+
+  <table class="table">
+    <thead>
+      <tr><th>Type</th><th>Count</th><th>CPUs</th></tr>
+    </thead>
+    <tbody>
+    {% for instance_type, count, cpus in instances %}
+      <tr><td>{{ instance_type }}</td><td>{{ count }}</td><td>{{ cpus }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Running processes</h2>
+  <ul>
+	{% for terminal in terminals %} 
+		<li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>
+	{% endfor %}
+  </ul>
+
+{% endblock %}
+
