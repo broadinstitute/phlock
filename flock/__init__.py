@@ -84,6 +84,32 @@ class TaskStatusCache:
   def __init__(self):
     self.missing_since = collections.defaultdict(lambda: None)
     self.finished_successfully = set()
+    # history is tuples of (timstamp, finished_count) ordered by timestamp
+    self.history = []
+
+  def update_estimate(self, tasks):
+    counts = collections.defaultdict(lambda: 0)
+    for task in tasks:
+      counts[task.status] += 1
+    self.record_finished_count(time.time(), counts[FINISHED] + counts[FAILED])
+    return self.estimate_completion_rate(counts[SUBMITTED] + counts[WAITING])
+  
+  def record_finished_count(self, timestamp, finished_count):
+    self.history.append( (timestamp, finished_count) )
+    
+  def estimate_completion_rate(self, submitted_count, window=60*10):
+    history = [(timestamp, finished_count) for timestamp, finished_count in self.history]
+    if len(history) < 2:
+      return None
+
+    last = history[-1]
+    first = history[0]
+    
+    completions_per_minute = (last[1] - first[1])/(last[0] - first[0]) * 60
+    if completions_per_minute == 0.0:
+      return None
+    
+    return (submitted_count/completions_per_minute, completions_per_minute)
   
   def update_failure(self, task_dir, is_running):
     if is_running:
@@ -143,16 +169,38 @@ def find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, c
 
   return tasks
 
-class LocalQueue(object):
+@timeit
+def read_external_ids(run_id, task_dirs, expected_prefix):
+  external_ids = collections.defaultdict(lambda:[])
+  for task_dir in task_dirs:
+    job_id_file = "%s/%s/job_id.txt" % (run_id, task_dir)
+    if os.path.exists(job_id_file):
+      with open(job_id_file) as fd:
+        job_id = fd.read()
+        assert job_id.startswith(expected_prefix), "Job ID was expected to be %s but was %s" % (expected_prefix, job_id)
+        external_ids[task_dir] = job_id[len(expected_prefix):]
+  return external_ids
+
+class AbstractQueue(object):
+  def __init__(self):
+    self.cache = TaskStatusCache()
+    self.last_estimate = None
+    
+  def get_last_estimate(self):
+    return self.last_estimate
+
+class LocalQueue(AbstractQueue):
   def __init__(self):
     self._ran = set()
     self._extern_ids = {}
-    self.cache = TaskStatusCache()
-  
+    super(LocalQueue, self).__init__()
+    
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
     
-    return find_tasks(run_id, self._extern_ids, set(), task_dirs, job_deps, cache)
+    tasks = find_tasks(run_id, self._extern_ids, set(), task_dirs, job_deps, self.cache)
+    self.last_estimate = self.cache.update_estimate(tasks)    
+    return tasks
 
   def submit(self, task):
     d = task.full_path
@@ -166,22 +214,10 @@ class LocalQueue(object):
   def kill(self, task):
     raise Exception("not implemented")
 
-@timeit
-def read_external_ids(run_id, task_dirs, expected_prefix):
-  external_ids = collections.defaultdict(lambda:[])
-  for task_dir in task_dirs:
-    job_id_file = "%s/%s/job_id.txt" % (run_id, task_dir)
-    if os.path.exists(job_id_file):
-      with open(job_id_file) as fd:
-        job_id = fd.read()
-        assert job_id.startswith(expected_prefix), "Job ID was expected to be %s but was %s" % (expected_prefix, job_id)
-        external_ids[task_dir] = job_id[len(expected_prefix):]
-  return external_ids
-
-class LSFQueue(object):
+class LSFQueue(AbstractQueue):
   def __init__(self, bsub_options):
+    super(LSFQueue, self).__init__()
     self.bsub_options = [] if len(bsub_options) == 0 else bsub_options.split(" ")
-    self.cache = TaskStatusCache()
     
   def get_active_lsf_jobs(self):
     handle = subprocess.Popen(["bjobs", "-w"], stdout=subprocess.PIPE)
@@ -211,7 +247,9 @@ class LSFQueue(object):
     task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_lsf_jobs()
     external_ids = read_external_ids(run_id, task_dirs, "LSF:")
-    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    tasks = find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    self.last_estimate = self.cache.update_estimate(tasks)    
+    return tasks
     
   def submit(self, task):
     d = task.full_path
@@ -237,9 +275,9 @@ class LSFQueue(object):
   def kill(self, task):
     raise Exception("bkill %s" % task.external_id)
 
-class SGEQueue(object):
+class SGEQueue(AbstractQueue):
   def __init__(self):
-    self.cache = TaskStatusCache()
+    super(SGEQueue, self).__init__()
     
   def get_active_sge_jobs(self):
     handle = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
@@ -267,7 +305,9 @@ class SGEQueue(object):
     task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_sge_jobs()
     external_ids = read_external_ids(run_id, task_dirs, "SGE:")
-    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    tasks = find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    self.last_estimate = self.cache.update_estimate(tasks)    
+    return tasks
     
   def submit(self, task):
     d = task.full_path
@@ -291,9 +331,9 @@ class SGEQueue(object):
   def kill(self, task):
     raise Exception("qkill %s" % task.external_id)
 
-class LocalBgQueue(object):
+class LocalBgQueue(AbstractQueue):
   def __init__(self):
-    self.cache = TaskStatusCache()
+    super(LocalBgQueue, self).__init__()
     
   def get_active_procs(self):
     import getpass
@@ -324,7 +364,9 @@ class LocalBgQueue(object):
     task_dirs, job_deps = read_task_dirs(run_id)
     active_external_ids = self.get_active_procs()
     external_ids = read_external_ids(run_id, task_dirs, "PID:")
-    return find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    tasks = find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    self.last_estimate = self.cache.update_estimate(tasks)    
+    return tasks
     
   def submit(self, task):
     d = task.full_path
@@ -414,7 +456,7 @@ class Flock(object):
     else:
       print "Jobs are running, but --nowait was specified, so exiting"
 
-  def print_task_table(self, rows, summarize=True):
+  def print_task_table(self, rows, estimate, summarize=True):
     if summarize:
       jobs_per_status = collections.defaultdict(lambda:[])
       for task_dir, external_id, status in rows[1:]:
@@ -440,14 +482,18 @@ class Flock(object):
         row_str.append(" "*(col_widths[i]-len(cell)))
       print "  "+("".join(row_str))
 
+    if estimate != None:
+      minutes_remaining, completions_per_minute = estimate
+      print "  %.1f jobs are completing per minute. Estimated completion in %.1f minutes" % (completions_per_minute, minutes_remaining)
 
   def check_and_print(self, run_id):
     tasks = self.job_queue.find_tasks(run_id)
+    estimate = self.job_queue.get_last_estimate()
     rows =[["Task", "ID", "Status"]]
     for task in tasks:
       rows.append((task.task_dir, task.external_id, task.status))
     log.info("Checking on tasks")
-    self.print_task_table(rows)
+    self.print_task_table(rows, estimate)
     return tasks
 
   def poll_once(self, run_id, maxsubmit=None):
