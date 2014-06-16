@@ -91,14 +91,15 @@ class TaskStatusCache:
     counts = collections.defaultdict(lambda: 0)
     for task in tasks:
       counts[task.status] += 1
-    self.record_finished_count(time.time(), counts[FINISHED] + counts[FAILED])
+    self.record_finished_count(time.time(), counts[FINISHED] + counts[FAILED] + counts[UNKNOWN])
     return self.estimate_completion_rate(counts[SUBMITTED] + counts[WAITING])
   
   def record_finished_count(self, timestamp, finished_count):
     self.history.append( (timestamp, finished_count) )
     
   def estimate_completion_rate(self, submitted_count, window=60*10):
-    history = [(timestamp, finished_count) for timestamp, finished_count in self.history]
+    last_allowed = time.time() - window
+    history = [(timestamp, finished_count) for timestamp, finished_count in self.history if timestamp > last_allowed]
     if len(history) < 2:
       return None
 
@@ -539,7 +540,7 @@ class Flock(object):
   def retry(self, run_id, wait):
     tasks = self.job_queue.find_tasks(run_id)
     for task in tasks:
-      if task.status == FAILED:
+      if task.status in [FAILED, UNKNOWN]:
         os.unlink("%s/job_id.txt" % task.full_path)
     self.poll(run_id, wait)
 
