@@ -68,7 +68,9 @@ def read_task_dirs(run_id):
       # where 1 is all the scatter jobs, and 2 is the gather.
       # (In practice that's what happens)
       scatter_tasks = grouped_commands[1]
-      gather_tasks = grouped_commands[2]
+      gather_tasks = []
+      if 2 in grouped_commands:
+        gather_tasks = grouped_commands[2]
       task_dirs.extend(scatter_tasks)
       task_dirs.extend(gather_tasks)
       for gather_task in gather_tasks:
