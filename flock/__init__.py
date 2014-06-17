@@ -603,8 +603,9 @@ def flock_cmd_line(cmd_line_args):
   parser.add_argument('--nowait', help='foo help', action='store_true')
   parser.add_argument('--test', help='Run a test job', action='store_true')
   parser.add_argument('--maxsubmit', type=int)
-  parser.add_argument('command', help='bar help')
-  parser.add_argument('run_id', help='bar help')
+  parser.add_argument('--rundir', help="Override the run directory used by this run")
+  parser.add_argument('command', help='One of: run, check, poll, retry or kill')
+  parser.add_argument('run_id', help='Path to config file, which in turn will be used as the id for this run')
   
   args = parser.parse_args(cmd_line_args)
 
@@ -632,7 +633,10 @@ def flock_cmd_line(cmd_line_args):
   
   command = args.command
 
-  run_id = os.path.abspath(os.path.join(config.base_run_dir, os.path.basename(args.run_id)))
+  if args.rundir == None:
+    run_id = os.path.abspath(os.path.join(config.base_run_dir, os.path.basename(args.run_id)))
+  else:
+    run_id = args.rundir
   
   if args.test:
     modified_env['FLOCK_TEST_JOBCOUNT'] = "5"
