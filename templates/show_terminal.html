@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Terminal{% endblock %}
 {% block content %}
-<h1>{{ terminal.title }} [<span id="status">{{ terminal.status }}</span>]</h1>
+<h1>{% if terminal.is_running %}<img id="spinner" src="/static/spinner_30x30.gif">{% endif %}{{ terminal.title }} [<span id="status">{{ terminal.status }}</span>]</h1>
 
 <pre id="screen-buffer"></pre>
 
@@ -14,12 +14,13 @@ $(document).ready(function() {
   var terminal_id = "{{ terminal.id }}";
 
   (function worker() {
-    console.log("calling fetch");
     $.get('/terminal-json/'+terminal_id, function(data) {
-      console.log("got result", data);
-      $('#screen-buffer').text(data['screen']);
-      $('#status').text(data['status']);
-      setTimeout(worker, 5000);
+      $('#screen-buffer').text(data.screen);
+      $('#status').text(data.status);
+      if(!data.is_running) {
+        $('#spinner').hide()
+      }
+      setTimeout(worker, 2500);
     });
   })();
 

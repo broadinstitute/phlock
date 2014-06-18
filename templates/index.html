@@ -2,27 +2,36 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 
-  <h1>Star cluster manager</h1>
+  <h1><a href="http://star.mit.edu/cluster/">StarCluster</a> manager</h1>
   
   <ul>
+  	<li><a href="/prices">prices</a></li>
   	<li><a href="/test-run">test</a></li>
-    <li><a href="/start">start cluster</a></li>
+    <li><a href="/start-cluster">start cluster</a></li>
+    <li><a href="/start-tunnel">start tunnel</a></li>
+    <li><a href="/start-load-balance">Run load balancer (to enable shutting down cluster when idle)</a></li>
   	<li><a href="/terminate">terminate cluster</a></li>
-  	<li><a href="/add-node">add nodes</a></li>
+  	<li><a href="/add-node-form">add nodes</a></li>
+  	<li><a href="/submit-job-form">submit job</a></li>
   </ul>
 
-  <table class="table">
-    <thead>
-      <tr><th>Type</th><th>Count</th><th>CPUs</th></tr>
-    </thead>
-    <tbody>
-    {% for instance_type, count, cpus in instances %}
-      <tr><td>{{ instance_type }}</td><td>{{ count }}</td><td>{{ cpus }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  {% if instances == [] %}
+    <h2>No instances running</h2>
+  {% else %}
+    <h2>Running instances</h2>
+    <table class="table">
+      <thead>
+        <tr><th>Type</th><th>Count</th><th>CPUs</th></tr>
+      </thead>
+      <tbody>
+      {% for instance_type, count, cpus in instances %}
+        <tr><td>{{ instance_type }}</td><td>{{ count }}</td><td>{{ cpus }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
 
-  <h2>Running processes</h2>
+  <h2>Commands run:</h2>
   <ul>
 	{% for terminal in terminals %} 
 		<li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>

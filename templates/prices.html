@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+
+{% block head %}
+  {{ super() }}
+<link type="text/css" rel="stylesheet" href="/static/graph.css">
+<link type="text/css" rel="stylesheet" href="/static/detail.css">
+<link type="text/css" rel="stylesheet" href="/static/legend.css">
+<link type="text/css" rel="stylesheet" href="/static/lines.css">
+{% endblock %}
+  
+{% block content %}
+
+  <h1>Star cluster manager</h1>
+
+<div id="chart_container">
+	<div id="chart"></div>
+	<div id="legend_container">
+		<div id="smoother" title="Smoothing"></div>
+		<div id="legend"></div>
+	</div>
+	<div id="slider"></div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+
+<script src="/static/d3.v2.js"></script>
+<script src="/static/rickshaw.min.js"></script>
+
+<script>
+$(document).ready(function() {
+  
+  var graph = new Rickshaw.Graph( {
+  	element: document.querySelector("#chart"),
+  	width: 600,
+  	height: 600,
+  	renderer: 'line',
+    interpolation: 'linear',
+  	series: {{ series|tojson|safe }} 
+  } );
+  
+  graph.render();
+  
+  var hoverDetail = new Rickshaw.Graph.HoverDetail( {
+  	graph: graph,
+    xFormatter: function(x) { return "hour "+(x.toFixed(1)) },
+    yFormatter: function(y) { return "$" +y.toFixed(4) }
+  } );
+
+  var legend = new Rickshaw.Graph.Legend( {
+  	graph: graph,
+  	element: document.getElementById('legend')
+
+  } );
+
+  var shelving = new Rickshaw.Graph.Behavior.Series.Toggle( {
+  	graph: graph,
+  	legend: legend
+  } );
+
+  var yAxis = new Rickshaw.Graph.Axis.Y({
+      graph: graph
+  });
+
+  yAxis.render();
+      
+});
+</script>
+
+{% endblock %}
