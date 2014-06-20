@@ -22,6 +22,7 @@ AWS_SECRET_ACCESS_KEY = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
 
 def find_instances_in_cluster(ec2, cluster_name):
     instances = ec2.get_only_instances()
+    instances = [i for i in instances if i.state != 'terminated']
     group_name = "@sc-"+cluster_name
     return [ i for i in instances if group_name in [g.name for g in i.groups] ] 
 
@@ -48,6 +49,7 @@ CLUSTER_NAME="c"
 ec2 = boto.ec2.connection.EC2Connection(aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 def get_instance_counts():
   instances = ec2.get_only_instances()
+  instances = [i for i in instances if i.state != 'terminated']
   counts = collections.defaultdict(lambda: 0)
   for i in instances:
       counts[i.instance_type] += 1
@@ -96,6 +98,15 @@ class Terminal(object):
   
   def is_active(self):
     return True
+  
+  def kill(self):
+    self.proc.terminate()
+    for i in xrange(50):
+      if self.proc.poll() != None:
+        break
+      time.sleep(0.1)
+    if self.proc.poll() == None:
+        self.proc.kill()
 
 def create_term_for_command(id, args):
   master, slave = pty.openpty()
@@ -121,7 +132,7 @@ def index():
   instance_table = []
   total = 0
   for instance_type, count in instances.items():
-    cpus = cpus_per_instance[instance_type]
+    cpus = cpus_per_instance[instance_type] * count
     total += cpus
     instance_table.append( (instance_type, count, cpus) )
   instance_table.append( ("Total", "", total))
@@ -133,12 +144,20 @@ def index():
 
 @app.route("/add-node-form")
 def add_node_form():
-  return flask.render_template("add-node-form.html")
+  return flask.render_template("add-node-form.html", instance_types=[instance_type for instance_type, size in instance_sizes])
   
 @app.route("/add-nodes", methods=["POST"])
 def add_nodes():
-  return add_vcpus(int(request.values["vcpus"]), float(request.values["price_per_vcpu"]))
+  return add_vcpus(int(request.values["vcpus"]), float(request.values["price_per_vcpu"]), request.values["instance_type"])
 
+@app.route("/kill-terminal/<id>")
+def kill_termina(id):
+  if not (id in terminals):
+    flask.abort(404)
+
+  terminals[id].kill()
+
+  return flask.redirect("/terminal/"+id)
 
 @app.route("/terminal/<id>")
 def show_terminal(id):
@@ -251,6 +270,7 @@ def normalize_series(series):
     new_values = []
     
     xi = 0
+    y = None
     for i in xrange(len(values)):
       v = values[i]
       x = bucket(v["x"])
@@ -260,10 +280,16 @@ def normalize_series(series):
         new_values.append(dict(x=all_x_values[xi], y=y))
         xi+=1
       new_values.append(dict(x=x, y=y))
+    while xi < len(all_x_values) and y != None:
+      new_values.append(dict(x=all_x_values[xi], y=y))
+      xi+=1
+      
     return new_values
       
   for s in series:
     s["data"] = normalize(s["data"])
+
+import numpy as np
 
 @app.route("/prices")
 def prices():
@@ -274,17 +300,25 @@ def prices():
       series.append(get_price_series(t,s,zone))
   
   normalize_series(series)
+  medians = {}
+  for s in series:
+    medians[s["name"]] = np.median([x["y"] for x in s["data"]])
+  medians = medians.items()
+  medians.sort()
   
   for i in range(len(series)):
     series[i]["color"] = colors[i%len(colors)]
-  return flask.render_template("prices.html", series=series)
+  return flask.render_template("prices.html", series=series, medians=medians)
 
 @app.route("/terminate")
 def terminate_cluster():
   return run_command(["starcluster", "terminate", "--confirm", CLUSTER_NAME])
 
-def divide_into_instances(count):
+def divide_into_instances(count, instance_type):
   result = []
+
+  if instance_type != "":
+    return [(instance_type, count // cpus_per_instance[instance_type])]
 
   for instance, size in instance_sizes:
     instance_count = count // size
@@ -295,10 +329,10 @@ def divide_into_instances(count):
 
   return result
 
-def add_vcpus(vcpus, price_per_vcpu):
+def add_vcpus(vcpus, price_per_vcpu, instance_type):
   # only spawns the first set of machines.  Need to think if we need to support multiple
-  print "vcpus=%s, price_per_vcpu=%s" % (vcpus, price_per_vcpu)
-  for instance_type, count in divide_into_instances(vcpus):
+  print "vcpus=%s, price_per_vcpu=%s, instance_type=%s" % (vcpus, price_per_vcpu, instance_type)
+  for instance_type, count in divide_into_instances(vcpus, instance_type):
     return run_command(["starcluster", "addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I", instance_type, "-n", str(count), CLUSTER_NAME])
 
 # ssh run job command
