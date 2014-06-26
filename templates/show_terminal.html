@@ -3,7 +3,10 @@
 {% block content %}
 <h1>{% if terminal.is_running %}<img id="spinner" src="/static/spinner_30x30.gif">{% endif %}{{ terminal.title }} [<span id="status">{{ terminal.status }}</span>]</h1>
 
-<a href="/terminal-kill/{{ terminal.id}}" class="btn">Kill process</a>
+{% if terminal.is_running %}
+    <a href="/kill-terminal/{{ terminal.id}}" class="btn">Kill process</a>
+{% endif %}
+
 <pre id="screen-buffer"></pre>
 
 {% endblock %}

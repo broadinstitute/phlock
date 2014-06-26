@@ -1,0 +1,46 @@
+base_run_dir: /xchip/datasci/runs
+executor: sge
+invoke:|
+  stopifnot(flock_version[1] == 1)
+  code.dir <- getwd();
+
+  source("createBulkAtlantisFlock.R")
+  source("writeAtlantisInputs.R")
+  source("loadFromTaiga.R")
+
+  # populate variables
+  targetDatasetName = "{{targetDataset}} {{targetDataType}}"
+
+  target.by.name <- list("55k gene solutions"="achilles-v2-4-2-demeter-cleaned-gene-solutions",
+    "55k seed solutions"="achilles-v2-4-2-demeter-cleaned-seed-solutions")
+    #"98k gene solutions"="",
+    #"98k seed solutions"="")
+
+  targetMat <- load.matrix.from.taiga(name=target.by.name[[targetDatasetName]])
+
+  {% if celllineSubset == "solid" %}
+    something something
+    SI <- load.matrix.from.taiga("")
+  {% endif %}
+
+  pred.sources <- list()
+  {% for feature in predictiveFeatures %}
+    {% if feature == "Exp" %}
+        m <- load.matrix.from.taiga(name="ccle-rnaseq-gene-expression-rpkm")
+        pred.def <- list(dat=m, prefix="{{feature}}", vartype="{{feature}}", must.have.cellline=T)
+    {% else %}
+        invalid
+    {% endif %}
+    pred.sources[[length(pred.sources)+1]] <- pred.def
+  {% endfor %}
+
+  f <- writeAtlantisInputs(
+	flock_run_dir,
+        pred.sources=pred.sources,
+        target.sources=list(
+		    list(dat=targetMat, prefix="GS", vartype="GS", must.have.cellline=T)
+	        ),
+        analysisID=basename(flock_run_dir))
+
+  createBulkAtlantisFlock("description", "regression", f$pred.file, f$target.file,
+    f$anno.file, "{{predictiveFeatureSubset}}")

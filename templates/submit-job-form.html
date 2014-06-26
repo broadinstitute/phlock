@@ -9,13 +9,13 @@
         <label for="{{ field.label }}" class="col-sm-3 control-label">{{ field.label }}</label>
 
         {% if field.is_text %}
-        <div class="col-sm-2">
-            <input type="text" class="form-control" id="{{ field.label }}" name="{{ field.label }}">
+        <div class="col-sm-{{ field.width }}">
+            <input type="text" class="form-control" id="{{ field.label }}" name="{{ field.label }}" value="{{ field.default }}">
         </div>
         {% endif %}
         
         {% if field.is_enum %}
-        <div class="col-sm-2">
+        <div class="col-sm-{{ field.width }}">
             <select {% if field.allow_multiple %}multiple{% endif %} class="form-control" id="{{ field.label }}" name="{{ field.label }}">
               {% for value in field.values %}
                 <option value="{{value}}">{{ value }}</option>
