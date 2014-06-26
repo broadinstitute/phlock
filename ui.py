@@ -80,7 +80,7 @@ class Terminal(object):
         self.stdout = stdout
         self.start_time = time.time()
 
-        self.screen = pyte.Screen(120, 140)
+        self.screen = pyte.Screen(140, 140)
         self.stream = pyte.ByteStream()
         self.stream.attach(self.screen)
 
@@ -257,7 +257,13 @@ def terminal_json(id):
         flask.abort(404)
 
     terminal = terminals[id]
+    # trim whitespace on the right
     lines = [l.rstrip() for l in terminal.display()]
+
+    # trim empty lines from the end
+    while len(lines) >= 1 and lines[-1] == '':
+        del lines[-1]
+
     return flask.jsonify(status=terminal.status, is_running=terminal.is_running, screen=("\n".join(lines)))
 
 
