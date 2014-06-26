@@ -43,7 +43,7 @@ def deploy_code_from_git(repo, branch):
 
 
 def install_config(sha_code_dir, config_temp_file):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%m%S")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     target_dir = "/xchip/datasci/runs/"+timestamp
 
     # create the directory for this run
