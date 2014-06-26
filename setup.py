@@ -9,6 +9,6 @@ setup(
     author_email="pgm@lazbox.org",
     url="https://github.com/pgm/flock",
     long_description=open('README.txt').read(),
-    scripts=['scripts/flock'],
+    scripts=['scripts/flock', 'scripts/flockjob'],
     package_data={'flock': ['*.R']}
 )
