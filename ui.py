@@ -80,7 +80,7 @@ class Terminal(object):
         self.stdout = stdout
         self.start_time = time.time()
 
-        self.screen = pyte.Screen(140, 140)
+        self.screen = pyte.Screen(145, 140)
         self.stream = pyte.ByteStream()
         self.stream.attach(self.screen)
 

@@ -31,10 +31,21 @@
     </table>
   {% endif %}
 
-  <h2>Commands run:</h2>
+  <h2>Running commands:</h2>
   <ul>
-	{% for terminal in terminals %} 
-		<li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>
+	{% for terminal in terminals %}
+        {% if terminal.is_running %}
+		    <li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>
+        {% endif %}
+	{% endfor %}
+  </ul>
+
+  <h2>Terminated commands:</h2>
+  <ul>
+	{% for terminal in terminals %}
+        {% if not terminal.is_running %}
+    		<li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>
+        {% endif %}
 	{% endfor %}
   </ul>
 

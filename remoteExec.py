@@ -4,9 +4,13 @@ import fabric.contrib.files
 import fabric.network
 import tempfile
 import datetime
+import logging
 
 FLOCK_PATH = "/xchip/flock/bin/flockjob"
 CODE_DIR = "/xchip/datasci/code-cache"
+TARGET_ROOT = "/xchip/datasci/runs"
+logging.basicConfig(level=logging.WARN)
+log = logging.getLogger("remoteExec")
 
 def get_sha(repo, branch):
     stdout = local("git ls-remote %s"%(repo,), capture=True)
@@ -17,12 +21,14 @@ def get_sha(repo, branch):
     raise Exception("Could not find %s in %s" % (branch, repr(pairs)))
 
 def exists(path, verbose=False):
-    return run("/usr/bin/test -e %s" % path, warn_only=True).return_code == 0
+    return run("/usr/bin/test -e %s" % path, warn_only=True, quiet=True).return_code == 0
 
 def deploy_code_from_git(repo, branch):
     sha = get_sha(repo, branch)
     sha_code_dir = CODE_DIR+"/"+sha
     if not exists(sha_code_dir, verbose=True):
+        log.info("Deploying code to %s" % sha_code_dir)
+
         # create target directory where the code will live
         run("mkdir -p "+sha_code_dir)
 
@@ -38,13 +44,14 @@ def deploy_code_from_git(repo, branch):
         with cd(sha_code_dir):
             run("unzip "+target_zip_file)
         run("rm "+target_zip_file)
+    else:
+        log.warn("Code already deployed to %s, skipping deploy" % sha_code_dir)
 
     return sha_code_dir
 
-
 def install_config(sha_code_dir, config_temp_file):
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    target_dir = "/xchip/datasci/runs/"+timestamp
+    target_dir = TARGET_ROOT+"/"+timestamp
 
     # create the directory for this run
     run("mkdir -p "+target_dir)
@@ -52,17 +59,32 @@ def install_config(sha_code_dir, config_temp_file):
     # upload the config file and run via flock, after setting the working directory to be the current code dir
     put(config_temp_file, target_dir+"/config")
 
-    return sha_code_dir, FLOCK_PATH+" --rundir "+target_dir+"/files run "+target_dir+"/config"
+    return sha_code_dir, target_dir, FLOCK_PATH+" --rundir "+target_dir+"/files run "+target_dir+"/config | tee "+target_dir+"/output.txt"
 
+class EchoAndCapture(object):
+    def __init__(self, filename):
+        self.f = open(filename, "w")
+
+    def write(self, buffer):
+        sys.stdout.write(buffer)
+        return self.f.write(buffer)
+
+    def flush(self):
+        self.f.flush()
+
+    def close(self):
+        self.f.close()
 
 def deploy(host, key_filename, repo, branch, config_file):
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
             sha_code_dir = deploy_code_from_git(repo, branch)
         with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
-            working_dir, command = install_config(sha_code_dir, config_file)
+            working_dir, target_dir, command = install_config(sha_code_dir, config_file)
             with cd(working_dir):
+                #stdout_capture = EchoAndCapture(target_dir+"/output.txt")
                 run(command)
+                #stdout_capture.close()
     finally:
         fabric.network.disconnect_all()
 
