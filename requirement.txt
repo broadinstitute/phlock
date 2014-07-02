@@ -9,3 +9,4 @@ requests==2.2.1
 Flask-OpenID==1.2.1
 pyte==0.4.4
 boto==2.30.0
+fabric==1.9.0
