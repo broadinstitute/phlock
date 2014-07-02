@@ -16,14 +16,14 @@ invoke:|
     #"98k gene solutions"="",
     #"98k seed solutions"="")
 
-  targetMat <- load.matrix.from.taiga(name=target.by.name[[targetDatasetName]])
+  targetMat <- t(load.matrix.from.taiga(name=target.by.name[[targetDatasetName]]))
 
   {% if celllineSubset == "solid" %}
     SI <- load.matrix.from.taiga(name="ccle-sample-info", version=1)
     solid.lines <- rownames(SI)[SI[,"solidorhaemo_is_solid"] == 1]
-    lines.to.keep <- intersect(colnames(targetMat), solid.lines)
+    lines.to.keep <- intersect(rownames(targetMat), solid.lines)
     stopifnot(length(lines.to.keep) > 0)
-    targetMat <- targetMat[,lines.to.keep,drop=F]
+    targetMat <- targetMat[lines.to.keep,,drop=F]
   {% endif %}
 
   pred.sources <- list()
