@@ -38,7 +38,7 @@ invoke:|
         pred.def <- list(dat=m, prefix="{{feature}}", vartype="{{feature}}", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
-    {% elif feature == "MUT" %}
+    {% elif feature == "Mut" %}
 
         m <- load.matrix.from.taiga(name="ccle-rnaseq-mutation-hotspot", version=1)
         pred.def <- list(dat=m, prefix="MUThot", vartype="MUT", must.have.cellline=T)
