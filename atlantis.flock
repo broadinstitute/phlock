@@ -20,7 +20,7 @@ invoke:|
 
   {% if celllineSubset == "solid" %}
     SI <- load.matrix.from.taiga(name="ccle-sample-info", version=1)
-    solid.lines <- rownames(SI$dat)[SI$dat[,"solidorhaemo_is_solid"] == 1]
+    solid.lines <- rownames(SI)[SI[,"solidorhaemo_is_solid"] == 1]
     targetMat <- targetMat[solid.lines,,drop=F]
   {% endif %}
 
