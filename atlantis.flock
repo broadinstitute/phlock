@@ -21,7 +21,9 @@ invoke:|
   {% if celllineSubset == "solid" %}
     SI <- load.matrix.from.taiga(name="ccle-sample-info", version=1)
     solid.lines <- rownames(SI)[SI[,"solidorhaemo_is_solid"] == 1]
-    targetMat <- targetMat[solid.lines,,drop=F]
+    lines.to.keep <- intersect(colnames(targetMat), solid.lines)
+    stopifnot(length(lines.to.keep) > 0)
+    targetMat <- targetMat[,lines.to.keep,drop=F]
   {% endif %}
 
   pred.sources <- list()
@@ -48,3 +50,5 @@ invoke:|
 
   createBulkAtlantisFlock("description", "regression", f$pred.file, f$target.file,
     f$anno.file, "{{predictiveFeatureSubset}}")
+
+    [ec2-54-88-147-83.compute-1.amazonaws.com] out: +     "55k seed solutions"="achilles-v2-4-2-demeter-cleaned-seed-solutions")
