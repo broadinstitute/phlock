@@ -7,7 +7,6 @@ import pyte
 import pty
 import functools
 import formspec
-import numpy as np
 import datetime
 import time
 import tempfile
@@ -21,7 +20,7 @@ import boto.ec2
 
 AUTHORIZED_USERS = ['pmontgom@broadinstitute.org']
 
-oid = OpenID()
+oid = OpenID(None, "/tmp/clusterui-openid")
 
 config = ConfigParser.ConfigParser()
 config.read(os.path.expanduser('~/.starcluster/config'))
@@ -159,17 +158,12 @@ def redirect_with_error(url, msg):
 def secured(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        print "wrapper"
         if 'email' in flask.session:
-            print "wrapper a"
             if not (flask.session['email'] in AUTHORIZED_USERS):
-                print "wrapper b"
                 return redirect_with_error("/login", "You are not authorized to use this application")
 
-            print "wrapper c"
             return fn(*args, **kwargs)
         else:
-            print "wrapper d"
             return flask.redirect("/login")
 
     return wrapper
@@ -411,6 +405,10 @@ def normalize_series(series):
 
 
 
+def median(values):
+  values = list(values)
+  values.sort()
+  return values[len(values)/2]
 
 @app.route("/prices")
 def prices():
@@ -422,7 +420,7 @@ def prices():
     normalize_series(series)
     medians = {}
     for s in series:
-        medians[s["name"]] = np.median([x["y"] for x in s["data"]])
+        medians[s["name"]] = median([x["y"] for x in s["data"]])
     medians = medians.items()
     medians.sort()
 
@@ -462,8 +460,22 @@ def add_vcpus(vcpus, price_per_vcpu, instance_type):
              instance_type, "-n", str(count), CLUSTER_NAME])
 
 
+@app.errorhandler(500)
+def internal_error(exception):
+        app.logger.exception(exception)
+        return flask.render_template('500.html', exception=exception), 500
+
 # map of ID to terminal
 app.secret_key = 'not really secret'
 oid.init_app(app)
 oid.after_login_func = create_or_login
-app.run(debug=True)
+app.run(host="0.0.0.0", port=9935, debug=False)
+
+if app.debug is not True:   
+    import logging
+    from logging.handlers import RotatingFileHandler
+    file_handler = RotatingFileHandler('/xchip/datasci/logs/clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
+    file_handler.setLevel(logging.WARN)
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+    app.logger.addHandler(file_handler)
