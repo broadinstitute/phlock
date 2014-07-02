@@ -8,7 +8,6 @@ import logging
 
 FLOCK_PATH = "/xchip/flock/bin/flockjob"
 CODE_DIR = "/xchip/datasci/code-cache"
-TARGET_ROOT = "/xchip/datasci/runs"
 logging.basicConfig(level=logging.WARN)
 log = logging.getLogger("remoteExec")
 
@@ -49,9 +48,9 @@ def deploy_code_from_git(repo, branch):
 
     return sha_code_dir
 
-def install_config(sha_code_dir, config_temp_file):
+def install_config(target_root, sha_code_dir, config_temp_file):
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    target_dir = TARGET_ROOT+"/"+timestamp
+    target_dir = target_root+"/"+timestamp
 
     # create the directory for this run
     run("mkdir -p "+target_dir)
@@ -87,12 +86,12 @@ class EchoAndCapture(object):
     def close(self):
         self.f.close()
 
-def deploy(host, key_filename, repo, branch, config_file):
+def deploy(host, key_filename, repo, branch, config_file, target_root):
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
             sha_code_dir = deploy_code_from_git(repo, branch)
         with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
-            working_dir, target_dir, command = install_config(sha_code_dir, config_file)
+            working_dir, target_dir, command = install_config(target_root, sha_code_dir, config_file)
             with cd(working_dir):
                 install_wrapper_script(working_dir, target_dir)
                 #stdout_capture = EchoAndCapture(target_dir+"/output.txt")
