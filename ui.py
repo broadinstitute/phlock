@@ -27,7 +27,8 @@ config.read(os.path.expanduser('~/.starcluster/config'))
 
 AWS_ACCESS_KEY_ID = config.get("aws info", "AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
-
+STARCLUSTER_CMD = "/xchip/datasci/tools/venvs/starcluster/bin/starcluster"
+PYTHON_EXE = "/xchip/datasci/tools/venvs/clusterui/bin/python"
 
 def find_instances_in_cluster(ec2, cluster_name):
     instances = ec2.get_only_instances()
@@ -264,13 +265,13 @@ def terminal_json(id):
 @app.route("/start-cluster")
 @secured
 def start_cluster():
-    return run_command(["starcluster", "start", CLUSTER_NAME])
+    return run_command([STARCLUSTER_CMD, "start", CLUSTER_NAME])
 
 
 @app.route("/start-load-balance")
 @secured
 def start_load_balance():
-    return run_command(["starcluster", "loadbalance", CLUSTER_NAME, "-K"])
+    return run_command([STARCLUSTER_CMD, "loadbalance", CLUSTER_NAME, "-K"])
 
 
 @app.route("/submit-job-form")
@@ -325,7 +326,7 @@ def submit_job():
     t.write(flock_config)
     t.close()
 
-    return run_command(["python", "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name])
+    return run_command([PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name])
 
 
 @app.route("/start-tunnel")
@@ -439,7 +440,7 @@ def prices():
 @secured
 @app.route("/terminate")
 def terminate_cluster():
-    return run_command(["starcluster", "terminate", "--confirm", CLUSTER_NAME])
+    return run_command([STARCLUSTER_CMD, "terminate", "--confirm", CLUSTER_NAME])
 
 
 def divide_into_instances(count, instance_type):
@@ -463,7 +464,7 @@ def add_vcpus(vcpus, price_per_vcpu, instance_type):
     print "vcpus=%s, price_per_vcpu=%s, instance_type=%s" % (vcpus, price_per_vcpu, instance_type)
     for instance_type, count in divide_into_instances(vcpus, instance_type):
         return run_command(
-            ["starcluster", "addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I",
+            [STARCLUSTER_CMD, "addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I",
              instance_type, "-n", str(count), CLUSTER_NAME])
 
 
@@ -481,7 +482,8 @@ app.run(host="0.0.0.0", port=9935, debug=False)
 if app.debug is not True:   
     import logging
     from logging.handlers import RotatingFileHandler
-    file_handler = RotatingFileHandler('/xchip/datasci/logs/clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
+#    file_handler = RotatingFileHandler('/xchip/datasci/logs/clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
+    file_handler = RotatingFileHandler('clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
     file_handler.setLevel(logging.WARN)
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(formatter)
