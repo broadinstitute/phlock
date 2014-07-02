@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+  <h1>Job directories</h1>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>
+          Job name
+        </th>
+        <th>
+        </th>
+        <th>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job_name in jobs %}
+      <tr>
+        <td>
+          {{ job_name }}
+        </td>
+        <td>
+          <a href="/retry-job?job={{ job_name }}">Retry</a>
+        </td>
+        <td>
+          <a href="/kill-job?job={{ job_name }}">Kill</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}
+

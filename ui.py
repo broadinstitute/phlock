@@ -25,14 +25,25 @@ oid = OpenID(None, "/tmp/clusterui-openid")
 config = ConfigParser.ConfigParser()
 config.read(os.path.expanduser('~/.starcluster/config'))
 
+if os.path.exists("/xchip/datasci/tools/venvs/starcluster/bin/starcluster"):
+    STARCLUSTER_CMD = "/xchip/datasci/tools/venvs/starcluster/bin/starcluster"
+    PYTHON_EXE = "/xchip/datasci/tools/venvs/clusterui/bin/python"
+    DEBUG=False
+else:
+    STARCLUSTER_CMD = "starcluster"
+    PYTHON_EXE = "python"
+    DEBUG=True
+
+
 AWS_ACCESS_KEY_ID = config.get("aws info", "AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
-STARCLUSTER_CMD = "/xchip/datasci/tools/venvs/starcluster/bin/starcluster"
-PYTHON_EXE = "/xchip/datasci/tools/venvs/clusterui/bin/python"
+
+def filter_inactive_instances(instances):
+    return [i for i in instances if not (i.state in ['terminated', 'stopped'])]
 
 def find_instances_in_cluster(ec2, cluster_name):
     instances = ec2.get_only_instances()
-    instances = [i for i in instances if i.state != 'terminated']
+    instances = filter_inactive_instances(instances)
     group_name = "@sc-" + cluster_name
     return [i for i in instances if group_name in [g.name for g in i.groups]]
 
@@ -64,7 +75,7 @@ ec2 = boto.ec2.connection.EC2Connection(aws_access_key_id=AWS_ACCESS_KEY_ID,
 
 def get_instance_counts():
     instances = ec2.get_only_instances()
-    instances = [i for i in instances if i.state != 'terminated']
+    instances = filter_inactive_instances(instances)
     counts = collections.defaultdict(lambda: 0)
     for i in instances:
         counts[i.instance_type] += 1
@@ -306,13 +317,22 @@ def get_master_info():
     key_location = os.path.expanduser(key_location)
     return master, key_location
 
+
+TARGET_ROOT = "/xchip/datasci/runs"
+
 @app.route("/list-jobs")
 def list_jobs():
-    return flask.render_template("list_jobs.html", jobs=jobs)
+    p = subprocess.Popen([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "ls "+TARGET_ROOT], stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
+    stdout, stderr = p.communicate()
+    jobs = [j for j in stdout.split("\n") if j != ""]
+    return flask.render_template("list-jobs.html", jobs=jobs)
 
+@app.route("/retry-job")
+@secured
 def retry_job():
     job_name = request.values["job"]
-
+    assert not ("/" in job_name)
+    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "bash "+TARGET_ROOT+"/"+job_name+"/flock_wrapper.sh"])
 
 @app.route("/submit-job", methods=["POST"])
 @secured
@@ -326,7 +346,7 @@ def submit_job():
     t.write(flock_config)
     t.close()
 
-    return run_command([PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name])
+    return run_command([PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name, TARGET_ROOT])
 
 
 @app.route("/start-tunnel")
@@ -477,7 +497,7 @@ def internal_error(exception):
 app.secret_key = 'not really secret'
 oid.init_app(app)
 oid.after_login_func = create_or_login
-app.run(host="0.0.0.0", port=9935, debug=False)
+app.run(host="0.0.0.0", port=9935, debug=DEBUG)
 
 if app.debug is not True:   
     import logging
