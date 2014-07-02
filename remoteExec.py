@@ -59,7 +59,19 @@ def install_config(sha_code_dir, config_temp_file):
     # upload the config file and run via flock, after setting the working directory to be the current code dir
     put(config_temp_file, target_dir+"/config")
 
-    return sha_code_dir, target_dir, FLOCK_PATH+" --rundir "+target_dir+"/files run "+target_dir+"/config | tee "+target_dir+"/output.txt"
+    return sha_code_dir, target_dir, "bash "+target_dir+"/flock-wrapper.sh run"
+
+def install_wrapper_script(sha_code_dir, target_dir):
+    with tempfile.NamedTemporaryFile() as temp_file:
+        temp_file_name = temp_file.name
+        temp_file.write("#!/bin/bash\n")
+        temp_file.write("cd %s\n" % sha_code_dir)
+        temp_file.write("echo retrying... >> "+target_dir+"/output.txt\n")
+        temp_file.write(FLOCK_PATH+" --rundir "+target_dir+"/files \"$1\" "+target_dir+"/config 2>&1 | tee -a "+target_dir+"/output.txt\n")
+        temp_file.flush()
+
+        target_script = target_dir+"/flock-wrapper.sh"
+        put(temp_file_name, target_script)
 
 class EchoAndCapture(object):
     def __init__(self, filename):
@@ -82,6 +94,7 @@ def deploy(host, key_filename, repo, branch, config_file):
         with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
             working_dir, target_dir, command = install_config(sha_code_dir, config_file)
             with cd(working_dir):
+                install_wrapper_script(working_dir, target_dir)
                 #stdout_capture = EchoAndCapture(target_dir+"/output.txt")
                 run(command)
                 #stdout_capture.close()

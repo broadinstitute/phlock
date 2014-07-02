@@ -305,6 +305,13 @@ def get_master_info():
     key_location = os.path.expanduser(key_location)
     return master, key_location
 
+@app.route("/list-jobs")
+def list_jobs():
+    return flask.render_template("list_jobs.html", jobs=jobs)
+
+def retry_job():
+    job_name = request.values["job"]
+
 
 @app.route("/submit-job", methods=["POST"])
 @secured
