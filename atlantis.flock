@@ -19,14 +19,18 @@ invoke:|
   targetMat <- load.matrix.from.taiga(name=target.by.name[[targetDatasetName]])
 
   {% if celllineSubset == "solid" %}
-    something something
-    SI <- load.matrix.from.taiga("")
+    SI <- load.matrix.from.taiga(name="ccle-sample-info", version=1)
+    solid.lines <- rownames(SI$dat)[SI$dat[,"solidorhaemo_is_solid"] == 1]
+    targetMat <- targetMat[solid.lines,,drop=F]
   {% endif %}
 
   pred.sources <- list()
   {% for feature in predictiveFeatures %}
     {% if feature == "Exp" %}
-        m <- load.matrix.from.taiga(name="ccle-rnaseq-gene-expression-rpkm")
+        m <- load.matrix.from.taiga(name="ccle-rnaseq-gene-expression-rpkm", version=1)
+        pred.def <- list(dat=m, prefix="{{feature}}", vartype="{{feature}}", must.have.cellline=T)
+    {% elif feature == "CN" %}
+        m <- load.matrix.from.taiga(name="ccle-copy-number-variants", version=1)
         pred.def <- list(dat=m, prefix="{{feature}}", vartype="{{feature}}", must.have.cellline=T)
     {% else %}
         invalid
