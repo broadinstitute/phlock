@@ -10,29 +10,43 @@
         <th>
           Job name
         </th>
-        <th>
-        </th>
-        <th>
-        </th>
+        {% for c in column_names %}
+            <th>
+            {{ c }}
+            </th>
+        {% endfor %}
+            <th>
+            </th>
+            <th>
+            </th>
+            <th>
+            </th>
+            <th>
+            </th>
       </tr>
     </thead>
     <tbody>
-      {% for job_name in jobs %}
+      {% for j in jobs %}
       <tr>
         <td>
-          {{ job_name }}
+          {{ j.job_name }}
+        </td>
+        {% for c in column_names %}
+            <td>
+            {{ j[c] }}
+            </td>
+        {% endfor %}
+        <td>
+          <a href="/check-job?job={{ j.job_name }}">Check</a>
         </td>
         <td>
-          <a href="/check-job?job={{ job_name }}">Check</a>
+          <a href="/poll-job?job={{ j.job_name }}">Poll</a>
         </td>
         <td>
-          <a href="/poll-job?job={{ job_name }}">Poll</a>
+          <a href="/retry-job?job={{ j.job_name }}">Retry</a>
         </td>
         <td>
-          <a href="/retry-job?job={{ job_name }}">Retry</a>
-        </td>
-        <td>
-          <a href="/kill-job?job={{ job_name }}">Kill</a>
+          <a href="/kill-job?job={{ j.job_name }}">Kill</a>
         </td>
       </tr>
       {% endfor %}

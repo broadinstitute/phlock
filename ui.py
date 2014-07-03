@@ -317,15 +317,14 @@ def get_master_info():
     key_location = os.path.expanduser(key_location)
     return master, key_location
 
-
-TARGET_ROOT = "/xchip/datasci/runs"
+TARGET_ROOT = "/data2/runs"
 
 @app.route("/list-jobs")
 def list_jobs():
-    p = subprocess.Popen([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "ls "+TARGET_ROOT], stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
+    p = subprocess.Popen([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, TARGET_ROOT+"/get_runs.py "+TARGET_ROOT], stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     stdout, stderr = p.communicate()
-    jobs = [j for j in stdout.split("\n") if j != ""]
-    return flask.render_template("list-jobs.html", jobs=jobs)
+    jobs = json.loads(stdout)
+    return flask.render_template("list-jobs.html", jobs=jobs, column_names=["celllineSubset", "targetDataset", "predictiveFeatureSubset", "targetDataType", "predictiveFeatures"])
 
 @app.route("/retry-job")
 @secured
@@ -347,6 +346,7 @@ def poll_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
     return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh poll"])
+import json
 
 @app.route("/submit-job", methods=["POST"])
 @secured
@@ -360,8 +360,11 @@ def submit_job():
     t.write(flock_config)
     t.close()
 
-    return run_command([PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name, TARGET_ROOT])
+    t2 = tempfile.NamedTemporaryFile(delete=False)
+    t2.write(json.dumps(params))
+    t2.close()
 
+    return run_command([PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name, TARGET_ROOT, t2.name])
 
 @app.route("/start-tunnel")
 @secured
@@ -369,6 +372,7 @@ def start_tunnel():
     master, key_location = get_master_info()
 
     return run_command(["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+                        "-o", "ServerAliveInterval=300", "-o", "ServerAliveCountMax=3",
                         "-i", key_location, "-R 8999:datasci-dev.broadinstitute.org:8999", "-N",
                         "ubuntu@" + master.dns_name])
 
