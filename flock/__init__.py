@@ -279,8 +279,9 @@ class LSFQueue(AbstractQueue):
     raise Exception("bkill %s" % task.external_id)
 
 class SGEQueue(AbstractQueue):
-  def __init__(self):
+  def __init__(self, qsub_options):
     super(SGEQueue, self).__init__()
+    self.qsub_options = [] if len(qsub_options) == 0 else qsub_options.split(" ")
     
   def get_active_sge_jobs(self):
     handle = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
@@ -318,7 +319,9 @@ class SGEQueue(AbstractQueue):
     task_path_comps = d.split("/")
     job_name = "t-%s" % (task_path_comps[-1])
 
-    cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d, "%s/task.sh" % d]
+    cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d] 
+    cmd.extend(self.qsub_options)
+    cmd.extend(["%s/task.sh" % d])
     log.info("EXEC: %s", cmd)
     handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     stdout, stderr = handle.communicate()
@@ -551,7 +554,7 @@ class Flock(object):
         os.unlink("%s/job_id.txt" % task.full_path)
     self.poll(run_id, wait)
 
-Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options"])
+Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options"])
 
 def parse_config(f):
   props = {}
@@ -590,7 +593,7 @@ def parse_config(f):
   return props
 
 def load_config(filenames):
-  config = {"bsub_options":""}
+  config = {"bsub_options":"", "qsub_options":""}
   for filename in filenames:
     log.info("Reading config from %s", filename)
     with open(filename) as f:
@@ -630,7 +633,7 @@ def flock_cmd_line(cmd_line_args):
   elif config.executor == "local":
     job_queue = LocalQueue()
   elif config.executor == "sge":
-    job_queue = SGEQueue()
+    job_queue = SGEQueue(config.qsub_options)
   elif config.executor == "lsf":
     job_queue = LSFQueue(config.bsub_options)
   else:
