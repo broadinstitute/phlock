@@ -22,8 +22,7 @@ def get_sha(repo, branch):
 def exists(path, verbose=False):
     return run("/usr/bin/test -e %s" % path, warn_only=True, quiet=True).return_code == 0
 
-def deploy_code_from_git(repo, branch):
-    sha = get_sha(repo, branch)
+def deploy_code_from_git(repo, sha, branch):
     sha_code_dir = CODE_DIR+"/"+sha
     if not exists(sha_code_dir, verbose=True):
         log.info("Deploying code to %s" % sha_code_dir)
@@ -86,12 +85,22 @@ class EchoAndCapture(object):
     def close(self):
         self.f.close()
 
-def deploy(host, key_filename, repo, branch, config_file, target_root):
+import json
+
+def deploy(host, key_filename, repo, branch, config_file, target_root, json_params):
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
-            sha_code_dir = deploy_code_from_git(repo, branch)
+            sha = get_sha(repo, branch)
+            sha_code_dir = deploy_code_from_git(repo, sha, branch)
+
+            params = json.loads(open(json_params).read())
+            params["sha"] = sha
+            with open(json_params, "w") as fd:
+                fd.write(json.dumps(params))
+
         with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
             working_dir, target_dir, command = install_config(target_root, sha_code_dir, config_file)
+            put(json_params, target_dir+"/config.json")
             with cd(working_dir):
                 install_wrapper_script(working_dir, target_dir)
                 #stdout_capture = EchoAndCapture(target_dir+"/output.txt")
