@@ -339,7 +339,8 @@ class SGEQueue(AbstractQueue):
       fd.write("SGE:"+sge_job_id)
     
   def kill(self, task):
-    raise Exception("qkill %s" % task.external_id)
+    handle = subprocess.Popen(["qdel", task.external_id])
+    handle.communicate()
 
 class LocalBgQueue(AbstractQueue):
   def __init__(self):
