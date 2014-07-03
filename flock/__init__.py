@@ -316,8 +316,7 @@ class SGEQueue(AbstractQueue):
     d = task.full_path
 
     task_path_comps = d.split("/")
-    job_dir_name = task_path_comps[task_path_comps.index("tasks")-1]
-    job_name = "t-%s-%s" % (job_dir_name, task_path_comps[-1])
+    job_name = "t-%s" % (task_path_comps[-1])
 
     cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d, "%s/task.sh" % d]
     log.info("EXEC: %s", cmd)
