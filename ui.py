@@ -332,21 +332,21 @@ def list_jobs():
 def retry_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh retry"])
+    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh retry"])
 
 @app.route("/check-job")
 @secured
 def check_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh check"])
+    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh check"])
 
 @app.route("/poll-job")
 @secured
 def poll_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh poll"])
+    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh poll"])
 
 @app.route("/submit-job", methods=["POST"])
 @secured
