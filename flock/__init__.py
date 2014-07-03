@@ -314,7 +314,12 @@ class SGEQueue(AbstractQueue):
     
   def submit(self, task):
     d = task.full_path
-    cmd = ["qsub", "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d, "%s/task.sh" % d]
+
+    task_path_comps = d.split("/")
+    job_dir_name = task_path_comps[task_path_comps.index("tasks")-1]
+    job_name = "t-%s-%s" % (job_dir_name, task_path_comps[-1])
+
+    cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d, "%s/task.sh" % d]
     log.info("EXEC: %s", cmd)
     handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     stdout, stderr = handle.communicate()
@@ -488,6 +493,7 @@ class Flock(object):
     if estimate != None:
       minutes_remaining, completions_per_minute = estimate
       print "  %.1f jobs are completing per minute. Estimated completion in %.1f minutes" % (completions_per_minute, minutes_remaining)
+    sys.stdout.flush()
 
   def check_and_print(self, run_id):
     tasks = self.job_queue.find_tasks(run_id)
