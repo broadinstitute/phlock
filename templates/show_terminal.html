@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Terminal{% endblock %}
 {% block content %}
-<h1>{% if terminal.is_running %}<img id="spinner" src="/static/spinner_30x30.gif">{% endif %}{{ terminal.title }} [<span id="status">{{ terminal.status }}</span>]</h1>
+<h1>{% if terminal.is_running %}<img class="show-when-running" src="/static/spinner_30x30.gif">{% endif %}{{ terminal.title }} [<span id="status">{{ terminal.status }}</span>]</h1>
 
 {% if terminal.is_running %}
-    <a href="/kill-terminal/{{ terminal.id}}" class="btn">Kill process</a>
+    <a class="show-when-running" href="/kill-terminal/{{ terminal.id}}" class="btn">Kill process</a>
 {% endif %}
 
 <pre id="screen-buffer" style="font-size: 11px;"></pre>
@@ -16,15 +16,20 @@
 <script>
 $(document).ready(function() {
   var terminal_id = "{{ terminal.id }}";
+  var last_screen = "";
 
   (function worker() {
     $.get('/terminal-json/'+terminal_id, function(data) {
-      $('#screen-buffer').text(data.screen);
+        if(last_screen != data.screen) {
+          $('#screen-buffer').text(data.screen);
+          last_screen = data.screen;
+        }
       $('#status').text(data.status);
       if(!data.is_running) {
-        $('#spinner').hide()
+        $('.show-when-running').hide()
+      } else {
+        setTimeout(worker, 2500);
       }
-      setTimeout(worker, 2500);
     });
   })();
 
