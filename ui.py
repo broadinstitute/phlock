@@ -352,19 +352,24 @@ import json
 @secured
 def submit_job():
     params = parse_reponse(formspec.ATLANTIS_FORM, request.values)
-    master, key_location = get_master_info()
-
     flock_config = formspec.apply_parameters(params)
 
-    t = tempfile.NamedTemporaryFile(delete=False)
-    t.write(flock_config)
-    t.close()
+    if "download" in request.values:
+        response = flask.make_response(flock_config)
+        response.headers["Content-Disposition"] = "attachment; filename=config.flock"
+        return response
+    else:
+        master, key_location = get_master_info()
 
-    t2 = tempfile.NamedTemporaryFile(delete=False)
-    t2.write(json.dumps(params))
-    t2.close()
+        t = tempfile.NamedTemporaryFile(delete=False)
+        t.write(flock_config)
+        t.close()
 
-    return run_command([PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name, TARGET_ROOT, t2.name])
+        t2 = tempfile.NamedTemporaryFile(delete=False)
+        t2.write(json.dumps(params))
+        t2.close()
+
+        return run_command([PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name, TARGET_ROOT, t2.name])
 
 @app.route("/start-tunnel")
 @secured
@@ -372,7 +377,7 @@ def start_tunnel():
     master, key_location = get_master_info()
 
     return run_command(["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
-                        "-o", "ServerAliveInterval=300", "-o", "ServerAliveCountMax=3",
+                        "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
                         "-i", key_location, "-R 8999:datasci-dev.broadinstitute.org:8999", "-N",
                         "ubuntu@" + master.dns_name])
 

@@ -22,7 +22,7 @@ class Text(Base):
 
 ATLANTIS_FORM = [
   Text("repo", default="ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", width=6),
-  Text("branch", default="HEAD"),
+  Text("branch", default="refs/heads/flock"),
   Enumeration("targetDataset", ["55k", "98k"], False),
   Enumeration("targetDataType", ["gene solutions", "seed solutions"], False),
   Enumeration("celllineSubset", ["all", "solid"], False),
