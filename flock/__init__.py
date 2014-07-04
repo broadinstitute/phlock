@@ -9,6 +9,7 @@ import re
 import time
 import logging
 import shutil
+import json
 
 FLOCK_VERSION="1.0"
 
@@ -508,11 +509,22 @@ class Flock(object):
     self.print_task_table(rows, estimate)
     return tasks
 
+  def write_json_summary(self,tasks, run_id):
+    jobs_per_status = collections.defaultdict(lambda:0)
+    for task in tasks:
+      jobs_per_status[task.status] += 1
+    jobs_per_status = dict(jobs_per_status)
+    with open(run_id+"/tasks/last_status.json", "w") as fd:
+      fd.write(json.dumps(jobs_per_status))
+
   def poll_once(self, run_id, maxsubmit=None):
     is_complete = True
     submitted_count = 0
     while True:
       tasks = self.check_and_print(run_id)
+      
+      # persist a snapshot of the current state in a json object
+      self.write_json_summary(tasks, run_id)
 
       for task in tasks:
         if task.status in [CREATED, SUBMITTED, UNKNOWN]:
