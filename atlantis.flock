@@ -14,8 +14,8 @@ invoke:|
   # populate variables
   targetDatasetName = "{{targetDataset}} {{targetDataType}}"
 
-  target.by.name <- list("55k gene solutions"="achilles-v2-4-2-demeter-cleaned-gene-solutions",
-    "55k seed solutions"="achilles-v2-4-2-demeter-cleaned-seed-solutions")
+  target.by.name <- list("55k gene solutions"="achilles-v2-4-3-demeter-cleaned-gene-solution",
+    "55k seed solutions"="achilles-v2-4-3-demeter-cleaned-seed-solutions")
     #"98k gene solutions"="",
     #"98k seed solutions"="")
 
