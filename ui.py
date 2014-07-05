@@ -324,7 +324,7 @@ def list_jobs():
     p = subprocess.Popen([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, TARGET_ROOT+"/get_runs.py "+TARGET_ROOT], stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     stdout, stderr = p.communicate()
     jobs = json.loads(stdout)
-    return flask.render_template("list-jobs.html", jobs=jobs, column_names=["celllineSubset", "targetDataset", "predictiveFeatureSubset", "targetDataType", "predictiveFeatures"])
+    return flask.render_template("list-jobs.html", jobs=jobs, column_names=["status", "celllineSubset", "targetDataset", "predictiveFeatureSubset", "targetDataType", "predictiveFeatures"])
 
 @app.route("/retry-job")
 @secured
