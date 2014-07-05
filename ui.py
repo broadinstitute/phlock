@@ -510,11 +510,15 @@ def add_vcpus(vcpus, price_per_vcpu, instance_type):
             [STARCLUSTER_CMD, "addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I",
              instance_type, "-n", str(count), CLUSTER_NAME])
 
+import traceback
+from werkzeug.debug import tbtools
 
 @app.errorhandler(500)
 def internal_error(exception):
         app.logger.exception(exception)
-        return flask.render_template('500.html', exception=exception), 500
+        tb = tbtools.get_current_traceback()
+        print "traceback", tb
+        return flask.render_template('500.html', exception=exception, traceback=tb.plaintext)
 
 # map of ID to terminal
 app.secret_key = 'not really secret'
