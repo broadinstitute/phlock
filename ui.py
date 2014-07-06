@@ -60,7 +60,8 @@ def find_master(ec2, cluster_name):
 
 terminals = {}
 
-instance_sizes = [("c3.large", 2), ("c3.xlarge", 4), ("c3.2xlarge", 8), ("c3.4xlarge", 16), ("c3.8xlarge", 32)]
+instance_sizes = [("c3.large", 2), ("c3.xlarge", 4), ("c3.2xlarge", 8), ("c3.4xlarge", 16), ("c3.8xlarge", 32),
+    ("r3.large", 2), ("r3.xlarge", 4), ("r3.2xlarge",8), ("r3.4xlarge",16), ("r3.8xlarge", 32)]
 instance_sizes.sort(lambda a, b: -cmp(a[1], b[1]))
 cpus_per_instance = {}
 for instance_type, cpus in instance_sizes:
@@ -229,8 +230,9 @@ def index():
 @app.route("/add-node-form")
 @secured
 def add_node_form():
+    instance_types = [instance_type for instance_type, size in instance_sizes]
     return flask.render_template("add-node-form.html",
-                                 instance_types=[instance_type for instance_type, size in instance_sizes])
+                                 instance_types=instance_types)
 
 @app.route("/add-nodes", methods=["POST"])
 @secured
@@ -295,8 +297,9 @@ def parse_reponse(form, request_params):
     packed = {}
 
     by_name = collections.defaultdict(lambda: [])
-    for k, v in request_params.items():
-        by_name[k].append(v.strip())
+    for k in request_params.keys():
+        for v in request_params.getlist(k):
+            by_name[k].append(v.strip())
 
     for field in form:
         if field.is_text:
@@ -493,6 +496,9 @@ def divide_into_instances(count, instance_type):
         return [(instance_type, count // cpus_per_instance[instance_type])]
 
     for instance, size in instance_sizes:
+        if(not instance.startswith("c")):
+            continue
+
         instance_count = count // size
         if instance_count == 0:
             continue
