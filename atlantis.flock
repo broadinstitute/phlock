@@ -1,6 +1,6 @@
 base_run_dir: /xchip/datasci/runs
 executor: sge
-{% if celllineSubset == "all" and feature != ["MUT"] %}
+{% if predictiveFeatureSubset == "all" and feature != ["MUT"] %}
 qsub_options: -l h_vmem=8G,virtual_free=6.5G
 {% endif %}
 invoke:|
