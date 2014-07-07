@@ -22,8 +22,8 @@ invoke:|
   targetMat <- t(load.matrix.from.taiga(name=target.by.name[[targetDatasetName]]))
 
   {% if celllineSubset == "solid" %}
-    SI <- load.matrix.from.taiga(name="ccle-sample-info", version=1)
-    solid.lines <- rownames(SI)[SI[,"solidorhaemo_is_solid"] == 1]
+    SI <- load.matrix.from.taiga("35105a4d-c0fb-496f-9318-06bf41c2c4ee")
+    solid.lines <- rownames(SI)[SI[,"isHemato_is_no"] == 1]
     lines.to.keep <- intersect(rownames(targetMat), solid.lines)
     stopifnot(length(lines.to.keep) > 0)
     targetMat <- targetMat[lines.to.keep,,drop=F]
