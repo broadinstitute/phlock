@@ -1,7 +1,7 @@
 base_run_dir: /xchip/datasci/runs
 executor: sge
-{% if celllineSubset == "all" %}
-qsub_options: -l h_vmem=8G,virtual_free=8G
+{% if celllineSubset == "all" and feature != ["MUT"] %}
+qsub_options: -l h_vmem=8G,virtual_free=6.5G
 {% endif %}
 invoke:|
   stopifnot(flock_version[1] == 1)
