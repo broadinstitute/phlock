@@ -21,8 +21,9 @@ invoke:|
 
   targetMat <- t(load.matrix.from.taiga(name=target.by.name[[targetDatasetName]]))
 
+  si.taiga.id <- "35105a4d-c0fb-496f-9318-06bf41c2c4ee"
   {% if celllineSubset == "solid" %}
-    SI <- load.matrix.from.taiga("35105a4d-c0fb-496f-9318-06bf41c2c4ee")
+    SI <- load.matrix.from.taiga(si.taiga.id)
     solid.lines <- rownames(SI)[SI[,"isHemato_is_no"] == 1]
     lines.to.keep <- intersect(rownames(targetMat), solid.lines)
     stopifnot(length(lines.to.keep) > 0)
@@ -33,8 +34,6 @@ invoke:|
   {% for feature in predictiveFeatures %}
     {% if feature == "GE" %}
         m <- load.matrix.from.taiga(name="ccle-rnaseq-gene-expression-rpkm-for-analysis-in-manuscripts-protein-coding-genes-only", version=1)
-        # expression matrix contains ensemble IDs as well as gene symbols, so strip those out
-        #colnames(m) <- sub(pattern=" \\(ENSG[0-9]+.+\\)", replacement="", colnames(m))
 
         pred.def <- list(dat=m, prefix="Exp", vartype="Exp", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
@@ -56,6 +55,11 @@ invoke:|
 
         m <- load.matrix.from.taiga(name="ccle-rnaseq-mutation-missense", version=2)
         pred.def <- list(dat=m, prefix="MUTmis", vartype="MUT", must.have.cellline=T)
+        pred.sources[[length(pred.sources)+1]] <- pred.def
+    {% elif feature == "SI" %}
+
+        m <- load.matrix.from.taiga(si.taiga.id)
+        pred.def <- list(dat=m, prefix="SI", vartype="SI", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
     {% else %}
