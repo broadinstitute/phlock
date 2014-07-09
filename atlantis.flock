@@ -1,7 +1,11 @@
 base_run_dir: /xchip/datasci/runs
 executor: sge
 {% if predictiveFeatureSubset == "all" and feature != ["MUT"] %}
+  {% if "GE" in predictiveFeatures and "CN" in predictiveFeatures %}
+qsub_options: -l h_vmem=17G,virtual_free=16G
+  {% else %}
 qsub_options: -l h_vmem=8G,virtual_free=6.5G
+  {% endif %}
 {% endif %}
 invoke:|
   stopifnot(flock_version[1] == 1)
