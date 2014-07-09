@@ -1,10 +1,14 @@
 args <- commandArgs(TRUE);
 
 # load the global variables
-load(args[1]);
+if(args[1] != "NULL") {
+  load(args[1]);
+}
 
 # load the per-task variables
-load(args[2]);
+if(args[2] != "NULL") {
+  load(args[2]);
+}
 
 fileConn<-file(flock_starting_file)
 writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)

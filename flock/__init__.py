@@ -405,14 +405,13 @@ def dump_file(filename):
       sys.stdout.write(line)
 
 class Flock(object):
-  def __init__(self, job_queue, flock_home, modified_env):
+  def __init__(self, job_queue, flock_home):
     self.job_queue = job_queue
     self.flock_home = flock_home
-    self.modified_env = modified_env
 
   def system(self, cmd, ignore_retcode=False):
     log.info("EXEC %s", repr(cmd))
-    retcode = subprocess.call(cmd, env=self.modified_env, shell=True)
+    retcode = subprocess.call(cmd, shell=True)
     if retcode != 0 and (not ignore_retcode):
       raise Exception("Command terminated with exit status = %d" % retcode)
 
@@ -446,22 +445,44 @@ class Flock(object):
       log.warn("Run failed (%d tasks failed). Exitting", len(failures))
       sys.exit(1)
       
-  def run(self, run_id, script_body, wait, maxsubmit):
+  def run(self, run_id, script_body, wait, maxsubmit, test_job_count):
     run_dir = os.path.abspath(run_id)
     if os.path.exists(run_id):
       log.error("\"%s\" already exists. Aborting.", run_id)
       sys.exit(1)
     
     os.makedirs("%s/temp" % run_id)
-    temp_run_script = "%s/temp/run_script.R"%run_id
+    os.makedirs("%s/tasks-init/scatter" % run_id)
+    os.makedirs("%s/tasks" % run_id)
+    temp_run_script = "%s/tasks-init/scatter/scatter.R"%run_id
     with open(temp_run_script, "w") as fd:
+      
+      fd.write("flock_starting_file <- '%s/tasks-init/scatter/started-time.txt'\n" % run_dir)
+      fd.write("flock_completion_file <- '%s/tasks-init/scatter/finished-time.txt'\n" % run_dir)
+      fd.write("flock_test_job_count <- %s\n" % ("NULL" if test_job_count == None else test_job_count))
       fd.write("flock_version <- c(%s);\n" % ", ".join(FLOCK_VERSION.split(".")) )
       fd.write("flock_run_dir <- '%s';\n" % (run_dir))
       fd.write("flock_home <- '%s';\n" % (self.flock_home))
-  #    fd.write("flock_script_name <- '%s';\n" % (temp_run_script))
+
+      fd.write("""fileConn<-file(flock_starting_file)
+      writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
+      close(fileConn)
+      """)
+
       fd.write("source('%s/flock_support.R');\n" % self.flock_home)
       fd.write(script_body)
-    self.system("R --vanilla < %s" % (temp_run_script))
+      fd.write("""# write out record that task completed successfully
+      fileConn<-file(flock_completion_file)
+      writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
+      close(fileConn)
+      """)
+
+    with open("%s/tasks-init/scatter/task.sh" % run_id, "w") as fd:
+      fd.write("R --vanilla < %s" % temp_run_script)
+    
+    with open("%s/tasks-init/task_dirs.txt" % run_id, "w") as fd:
+      fd.write("1 tasks-init/scatter\n")
+
     self.poll_once(run_id, maxsubmit=maxsubmit)
     if wait:
       self.wait_for_completion(run_id)
@@ -617,8 +638,6 @@ def load_config(filenames):
 def flock_cmd_line(cmd_line_args):
   job_queue = LSFQueue("")
   flock_home = os.path.dirname(os.path.realpath(__file__))
-  modified_env=dict(os.environ)
-  modified_env['FLOCK_HOME'] = flock_home
 
   parser = argparse.ArgumentParser()
   parser.add_argument('--nowait', help='foo help', action='store_true')
@@ -658,15 +677,15 @@ def flock_cmd_line(cmd_line_args):
     run_id = os.path.abspath(os.path.join(config.base_run_dir, os.path.basename(args.run_id)))
   else:
     run_id = args.rundir
-  
+
+  test_job_count = None
   if args.test:
-    modified_env['FLOCK_TEST_JOBCOUNT'] = "5"
+    test_job_count = 5
     run_id += "-test"
 
   log.info("Writing run to \"%s\"", run_id)
-  modified_env['FLOCK_RUN_DIR'] = os.path.abspath(run_id)
 
-  f = Flock(job_queue, flock_home, modified_env)
+  f = Flock(job_queue, flock_home)
   job_queue.system = f.system
 
   if command == "run":
@@ -674,7 +693,7 @@ def flock_cmd_line(cmd_line_args):
       log.warn("%s already exists -- removing before running job", run_id)
       shutil.rmtree(run_id)
 
-    f.run(run_id, config.invoke, not args.nowait, args.maxsubmit)
+    f.run(run_id, config.invoke, not args.nowait, args.maxsubmit, test_job_count)
   elif command == "kill":
     f.kill(run_id)
   elif command == "check":

@@ -1,13 +1,13 @@
 # TODO: when submitting, need to check *.finished exists.  If so, delete it.
 
-flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_common_state=NULL, script_path=NULL, flock_run_dir=NULL, flock_test_jobcount=NULL) {
+flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_common_state=NULL, script_path=NULL, x_flock_run_dir=NULL, flock_test_jobcount=NULL) {
   if(is.null(script_path)) {
-    script_path = Sys.getenv("FLOCK_HOME");
+    script_path = flock_home
     stopifnot(script_path != '');
   }
 
-  if(is.null(flock_run_dir)) {
-    flock_run_dir = Sys.getenv("FLOCK_RUN_DIR")
+  if(is.null(x_flock_run_dir)) {
+#    flock_run_dir = flock_run_dir
     stopifnot(flock_run_dir != '');
   }
 
