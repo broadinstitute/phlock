@@ -206,7 +206,7 @@ class LocalQueue(AbstractQueue):
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
 
-  def submit(self, task):
+  def submit(self, task, is_scatter):
     d = task.full_path
     cmd = "bash %s/task.sh > %s/stdout.txt 2> %s/stderr.txt" % (d,d,d)
     if cmd in self._ran:
@@ -218,10 +218,18 @@ class LocalQueue(AbstractQueue):
   def kill(self, task):
     raise Exception("not implemented")
 
+def split_options(s):
+  s = s.strip()
+  if len(s) == 0:
+    return []
+  else:
+    return s.split(" ")
+
 class LSFQueue(AbstractQueue):
-  def __init__(self, bsub_options):
+  def __init__(self, bsub_options, scatter_bsub_options):
     super(LSFQueue, self).__init__()
-    self.bsub_options = [] if len(bsub_options) == 0 else bsub_options.split(" ")
+    self.bsub_options = split_options(bsub_options)
+    self.scatter_bsub_options = split_options(scatter_bsub_options)
     
   def get_active_lsf_jobs(self):
     handle = subprocess.Popen(["bjobs", "-w"], stdout=subprocess.PIPE)
@@ -255,10 +263,13 @@ class LSFQueue(AbstractQueue):
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
     
-  def submit(self, task):
+  def submit(self, task, is_scatter):
     d = task.full_path
     cmd = ["bsub", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d]
-    cmd.extend(self.bsub_options)
+    if is_scatter:
+      cmd.extend(self.bsub_options)
+    else:
+      cmd.extend(self.scatter_bsub_options)
     cmd.append("bash %s/task.sh" % d)
     log.info("EXEC: %s", cmd)
     handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -280,9 +291,10 @@ class LSFQueue(AbstractQueue):
     raise Exception("bkill %s" % task.external_id)
 
 class SGEQueue(AbstractQueue):
-  def __init__(self, qsub_options):
+  def __init__(self, qsub_options, scatter_qsub_options):
     super(SGEQueue, self).__init__()
-    self.qsub_options = [] if len(qsub_options) == 0 else qsub_options.split(" ")
+    self.qsub_options = split_options(qsub_options)
+    self.scatter_qsub_options = split_options(scatter_qsub_options)
     
   def get_active_sge_jobs(self):
     handle = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
@@ -314,7 +326,7 @@ class SGEQueue(AbstractQueue):
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
     
-  def submit(self, task):
+  def submit(self, task, is_scatter):
     d = task.full_path
 
     task_path_comps = d.split("/")
@@ -380,7 +392,7 @@ class LocalBgQueue(AbstractQueue):
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
     
-  def submit(self, task):
+  def submit(self, task, is_scatter):
     d = task.full_path
     stdout = open("%s/stdout.txt" % d, "w")
     stderr = open("%s/stderr.txt" % d, "w")
@@ -556,7 +568,7 @@ class Flock(object):
         created_tasks = created_tasks[:maxsubmit]
         
       for task in created_tasks:
-        self.job_queue.submit(task)
+        self.job_queue.submit(task, "scatter" in task.task_dir)
       
       submitted_count += len(created_tasks)
       if len(created_tasks) == 0:
@@ -588,7 +600,7 @@ class Flock(object):
         os.unlink("%s/job_id.txt" % task.full_path)
     self.poll(run_id, wait)
 
-Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options"])
+Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options", "scatter_bsub_options", "scatter_qsub_options"])
 
 def parse_config(f):
   props = {}
@@ -632,11 +644,16 @@ def load_config(filenames):
     log.info("Reading config from %s", filename)
     with open(filename) as f:
       config.update(parse_config(f))
+  
+  if not ( "scatter_bsub_options" in config ):
+    config["scatter_bsub_options"] = config["bsub_options"]
+  
+  if not ( "scatter_qsub_options" in config ):
+    config["scatter_qsub_options"] = config["qsub_options"]
 
   return Config(**config)
 
 def flock_cmd_line(cmd_line_args):
-  job_queue = LSFQueue("")
   flock_home = os.path.dirname(os.path.realpath(__file__))
 
   parser = argparse.ArgumentParser()
@@ -665,9 +682,9 @@ def flock_cmd_line(cmd_line_args):
   elif config.executor == "local":
     job_queue = LocalQueue()
   elif config.executor == "sge":
-    job_queue = SGEQueue(config.qsub_options)
+    job_queue = SGEQueue(config.qsub_options, config.scattter_qsub_options)
   elif config.executor == "lsf":
-    job_queue = LSFQueue(config.bsub_options)
+    job_queue = LSFQueue(config.bsub_options, config.scatter_bsub_options)
   else:
     raise Exception("Unknown executor: %s" % config.executor)
   
