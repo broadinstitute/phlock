@@ -26,7 +26,7 @@ ATLANTIS_FORM = [
   Enumeration("targetDataset", ["55k", "98k"], False),
   Enumeration("targetDataType", ["gene solutions", "seed solutions"], False),
   Enumeration("celllineSubset", ["all", "solid"], False),
-  Enumeration("predictiveFeatures", ["GE", "CN", "MUT", "SI"], True), #, "gene solutions"
+  Enumeration("predictiveFeatures", ["GE", "CN", "MUT", "SI", "miRNA"], True), #, "gene solutions"
   Enumeration("predictiveFeatureSubset", ["single", "top100", "all"], False)
 ]
 
