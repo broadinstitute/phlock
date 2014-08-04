@@ -351,9 +351,16 @@ class SGEQueue(AbstractQueue):
     with open("%s/job_id.txt" % d, "w") as fd:
       fd.write("SGE:"+sge_job_id)
     
-  def kill(self, task):
-    handle = subprocess.Popen(["qdel", task.external_id])
+  def kill(self, tasks):
+    for batch in divide_into_batches(tasks, 100):
+      cmd = ["qdel"]
+      cmd.extend( [task.external_id for task in batch ] )
+    handle = subprocess.Popen(cmd)
     handle.communicate()
+
+def divide_into_batches(elements, size):
+  for i in range(0,len(elements), size):
+    yield elements[i:i+size]
 
 class LocalBgQueue(AbstractQueue):
   def __init__(self):
@@ -411,10 +418,13 @@ class LocalBgQueue(AbstractQueue):
 
 
 def dump_file(filename):
-  with open(filename) as fd:
-    for line in fd.readlines():
-      sys.stdout.write("  ")
-      sys.stdout.write(line)
+  if os.path.exists(filename):
+    with open(filename) as fd:
+      for line in fd.readlines():
+        sys.stdout.write("  ")
+        sys.stdout.write(line)
+  else:
+    sys.stdout.write("  [ File %s does not exist ]" % filename)
 
 class Flock(object):
   def __init__(self, job_queue, flock_home):
@@ -586,12 +596,9 @@ class Flock(object):
 
   def kill(self, run_id):
     tasks = self.job_queue.find_tasks(run_id)
-    kill_count = 0
-    for task in tasks:
-      if task.status == SUBMITTED:
-        self.job_queue.kill(task)
-        kill_count += 1
-    log.info("%d jobs with status 'Submitted' killed", kill_count)
+    to_kill = [ task for task in tasks if task.status == SUBMITTED ]
+    self.job_queue.kill(to_kill)
+    log.info("%d jobs with status 'Submitted' killed", len(to_kill))
 
   def retry(self, run_id, wait):
     tasks = self.job_queue.find_tasks(run_id)
@@ -682,7 +689,7 @@ def flock_cmd_line(cmd_line_args):
   elif config.executor == "local":
     job_queue = LocalQueue()
   elif config.executor == "sge":
-    job_queue = SGEQueue(config.qsub_options, config.scattter_qsub_options)
+    job_queue = SGEQueue(config.qsub_options, config.scatter_qsub_options)
   elif config.executor == "lsf":
     job_queue = LSFQueue(config.bsub_options, config.scatter_bsub_options)
   else:
