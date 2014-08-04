@@ -10,6 +10,7 @@ import formspec
 import datetime
 import time
 import tempfile
+import re
 
 from flask.ext.openid import OpenID
 
@@ -328,6 +329,21 @@ def list_jobs():
     stdout, stderr = p.communicate()
     jobs = json.loads(stdout)
     return flask.render_template("list-jobs.html", jobs=jobs, column_names=["status", "celllineSubset", "targetDataset", "predictiveFeatureSubset", "targetDataType", "predictiveFeatures"])
+
+job_pattern = re.compile("\\d+-\\d+")
+
+@app.route("/pull-job")
+@secured
+def pull_job():
+    job_name = request.values["job"]
+    assert job_pattern.match(job_name) != None
+    t = tempfile.NamedTemporaryFile(delete=False)
+    t.write("set +ex\n")
+    t.write("cd /xchip/datasci/ec2-runs\n")
+    t.write("%s sshmaster %s --user ubuntu /xchip/scripts/make_model_summaries.R /data2/runs/%s/files/results\n" % (STARCLUSTER_CMD, CLUSTER_NAME, job_name) )
+    t.write("%s sshmaster %s --user ubuntu python /xchip/scripts/bundle_run_dirs.py /data2/runs/%s | tar xvzf -\n" % (STARCLUSTER_CMD, CLUSTER_NAME, job_name) )
+    t.close()
+    return run_command(["bash", t.name])
 
 @app.route("/retry-job")
 @secured
