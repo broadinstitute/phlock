@@ -351,6 +351,12 @@ def poll_job():
     return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh poll"])
 import json
 
+@app.route("/syncruns")
+@secured
+def syncRuns():
+    master, key_location = get_master_info()
+    return run_command([PYTHON_EXE, "-u", "syncRuns.py", master.dns_name, key_location)
+
 @app.route("/submit-job", methods=["POST"])
 @secured
 def submit_job():
