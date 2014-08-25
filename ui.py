@@ -513,17 +513,12 @@ def divide_into_instances(count, instance_type):
 
     return result
 
-HVM_AMI="ami-e450918c"
-
 def add_vcpus(vcpus, price_per_vcpu, instance_type):
     # only spawns the first set of machines.  Need to think if we need to support multiple
     #print "vcpus=%s, price_per_vcpu=%s, instance_type=%s" % (vcpus, price_per_vcpu, instance_type)
     for instance_type, count in divide_into_instances(vcpus, instance_type):
         command = [STARCLUSTER_CMD, "addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I",
              instance_type]
-        # r3 instances do not support paravirtualization VMs, so explicitly provide a HVM image
-        if instance_type.startswith("r3."):
-            command.extend(["-i", HVM_AMI])
         command.extend(["-n", str(count), CLUSTER_NAME])
         return run_command( command )
 
