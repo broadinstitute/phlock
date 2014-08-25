@@ -16,15 +16,20 @@ invoke:|
   source("writeAtlantisInputs.R")
   source("loadFromTaiga.R")
 
-  # populate variables
-  targetDatasetName = "{{targetDataset}} {{targetDataType}}"
+  {% if targetDataset == "55k" %}
+     {% if targetDataType == "gene solutions" %}
+       targetPrefix <- "GS"
+       targetMat <- t(load.matrix.from.taiga("achilles-v2-4-3-demeter-cleaned-gene-solution"))
+     {% elif targetDataType == "seed solutions" %}
+       targetPrefix <- "SS"
+       targetMat <- t(load.matrix.from.taiga("achilles-v2-4-3-demeter-cleaned-seed-solution"))
+     {% else %}
+          stopifnot(FALSE);
+     {% endif %}
+  {% else %}
+     stopifnot(FALSE);
+  {% endif %}
 
-  target.by.name <- list("55k gene solutions"="achilles-v2-4-3-demeter-cleaned-gene-solution",
-    "55k seed solutions"="achilles-v2-4-3-demeter-cleaned-seed-solution")
-    #"98k gene solutions"="",
-    #"98k seed solutions"="")
-
-  targetMat <- t(load.matrix.from.taiga(name=target.by.name[[targetDatasetName]]))
 
   si.taiga.id <- "35105a4d-c0fb-496f-9318-06bf41c2c4ee"
   {% if celllineSubset == "solid" %}
@@ -87,7 +92,7 @@ invoke:|
 	flock_run_dir,
         pred.sources=pred.sources,
         target.sources=list(
-		    list(dat=targetMat, prefix="GS", vartype="GS", must.have.cellline=T)
+		    list(dat=targetMat, prefix=targetPrefix, vartype="GS", must.have.cellline=T)
 	        ),
         analysisID=basename(flock_run_dir))
 
