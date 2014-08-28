@@ -481,7 +481,7 @@ class Flock(object):
       
       fd.write("flock_starting_file <- '%s/tasks-init/scatter/started-time.txt'\n" % run_dir)
       fd.write("flock_completion_file <- '%s/tasks-init/scatter/finished-time.txt'\n" % run_dir)
-      fd.write("flock_test_job_count <- %s\n" % ("NULL" if test_job_count == None else test_job_count))
+      fd.write("flock_test_job_count <- %s\n" % ("NA" if test_job_count == None else test_job_count))
       fd.write("flock_version <- c(%s);\n" % ", ".join(FLOCK_VERSION.split(".")) )
       fd.write("flock_run_dir <- '%s';\n" % (run_dir))
       fd.write("flock_home <- '%s';\n" % (self.flock_home))

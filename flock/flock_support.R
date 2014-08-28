@@ -1,6 +1,6 @@
 # TODO: when submitting, need to check *.finished exists.  If so, delete it.
 
-flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_common_state=NULL, script_path=NULL, x_flock_run_dir=NULL, flock_test_jobcount=NULL) {
+flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_common_state=NULL, script_path=NULL, x_flock_run_dir=NULL) {
   if(is.null(script_path)) {
     script_path = flock_home
     stopifnot(script_path != '');
@@ -9,10 +9,6 @@ flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_c
   if(is.null(x_flock_run_dir)) {
 #    flock_run_dir = flock_run_dir
     stopifnot(flock_run_dir != '');
-  }
-
-  if(is.null(flock_test_jobcount)) {
-    flock_test_jobcount = as.numeric(Sys.getenv("FLOCK_TEST_JOBCOUNT"))
   }
 
   task.dir <- 'tasks';
@@ -34,8 +30,8 @@ flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_c
   id.fmt.str = sprintf("%%0%.0f.0f", ceiling(log(length(inputs))/log(10)));
   flock_job_details = list()
   job.count = length(inputs);
-  if(!is.na(flock_test_jobcount)) {
-    job.count = min(flock_test_jobcount, job.count)
+  if(!is.na(flock_test_job_count)) {
+    job.count = min(flock_test_job_count, job.count)
   }
   for(job.index in 1:job.count) {
     job.id = sprintf(id.fmt.str, job.index);
