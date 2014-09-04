@@ -2,9 +2,10 @@
 {% block title %}Submit{% endblock %}
 {% block content %}
 
-  <form class="form-horizontal" role="form" method="post" action="/submit-job">
+  <form class="form-horizontal" enctype="multipart/form-data" role="form" method="post" action="/submit-job">
+    <input type="hidden" name="template" value="{{ form.template }}">
 
-    {% for field in form %}
+    {% for field in form.fields %}
       <div class="form-group">
         <label for="{{ field.label }}" class="col-sm-3 control-label">{{ field.label }}</label>
 
@@ -23,7 +24,13 @@
             </select>
         </div>
         {% endif %}
-        
+
+        {% if field.is_file %}
+        <div class="col-sm-{{ field.width }}">
+            <input type="file" class="form-control" id="{{ field.label }}" name="{{ field.label }}">
+        </div>
+        {% endif %}
+
       </div>
     {% endfor %}
     

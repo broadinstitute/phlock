@@ -22,16 +22,22 @@
         <th>
           Median price
         </th>
+        <th>
+            Latest price
+        </th>
       </tr>
     </thead>
     <tbody>
-      {% for instance, price in medians %}
+      {% for instance, price, last in per_instance_price %}
       <tr>
         <td>
           {{ instance }}
         </td>
         <td>
           {{ price }}
+        </td>
+        <td>
+          {{ last }}
         </td>
       </tr>
       {% endfor %}

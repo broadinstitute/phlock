@@ -4,6 +4,7 @@ class Base(object):
   def __init__(self, label, width):
     self.is_enum = False
     self.is_text = False
+    self.is_file = False
     self.label = label
     self.width = width
 
@@ -20,7 +21,17 @@ class Text(Base):
     self.is_text = True
     self.default = default
 
-ATLANTIS_FORM = [
+class FileUpload(Base):
+    def __init__(self, label, width=2):
+        Base.__init__(self, label, width)
+        self.is_file = True
+
+class Form:
+    def __init__(self, template, *fields):
+        self.fields = fields
+        self.template = template
+
+ATLANTIS_FORM = Form("atlantis.flock",
   Text("repo", default="ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", width=6),
   Text("branch", default="refs/heads/flock3"),
   Enumeration("targetDataset", ["55k", "98k"], False),
@@ -28,9 +39,14 @@ ATLANTIS_FORM = [
   Enumeration("celllineSubset", ["all", "solid"], False),
   Enumeration("predictiveFeatures", ["GE", "CN", "MUT", "SI", "miRNA", "high conf GS"], True),
   Enumeration("predictiveFeatureSubset", ["single", "top100", "all"], False)
-]
+)
 
+GENERIC_FORM = Form("generic.flock",
+  Text("repo", default="ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", width=6),
+  Text("branch", default="refs/heads/master"),
+  FileUpload("config", width=6)
+)
 
-def apply_parameters(params):
-    with open("atlantis.flock") as fd:
+def apply_parameters(template, params):
+    with open(template) as fd:
         return Template(fd.read()).render(**params)

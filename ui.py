@@ -19,12 +19,17 @@ import collections
 import ConfigParser, os
 import boto.ec2
 
+import traceback
+from werkzeug.debug import tbtools
+
+STARCLUSTER_CONFIG=os.path.expanduser('~/.starcluster/config')
+
 AUTHORIZED_USERS = ['pmontgom@broadinstitute.org']
 
 oid = OpenID(None, "/tmp/clusterui-openid")
 
 config = ConfigParser.ConfigParser()
-config.read(os.path.expanduser('~/.starcluster/config'))
+config.read(STARCLUSTER_CONFIG)
 
 if os.path.exists("/xchip/datasci/tools/venvs/starcluster/bin/starcluster"):
     STARCLUSTER_CMD = "/xchip/datasci/tools/venvs/starcluster/bin/starcluster"
@@ -86,9 +91,10 @@ def get_instance_counts():
 
 
 class Terminal(object):
-    def __init__(self, id, proc, stdout, title):
+    def __init__(self, id, proc, stdout, title, command_line=None):
         self.id = id
         self.title = title
+        self.command_line = command_line
         self.proc = proc
         self.stdout = stdout
         self.start_time = time.time()
@@ -128,6 +134,9 @@ class Terminal(object):
     def is_active(self):
         return True
 
+    def pid(self):
+        return "?"
+
     def kill(self):
         self.proc.terminate()
         for i in xrange(50):
@@ -149,6 +158,9 @@ def create_term_for_command(id, args):
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
     return Terminal(id, p, p.stdout, " ".join(args))
 
+
+def run_starcluster_cmd(args):
+    return run_command([STARCLUSTER_CMD, "-c", STARCLUSTER_CONFIG]+args)
 
 def run_command(args):
     id = uuid.uuid4().hex
@@ -279,22 +291,15 @@ def terminal_json(id):
 @app.route("/start-cluster")
 @secured
 def start_cluster():
-    return run_command([STARCLUSTER_CMD, "start", CLUSTER_NAME])
+    return run_starcluster_cmd(["start", CLUSTER_NAME])
 
 
 @app.route("/start-load-balance")
 @secured
 def start_load_balance():
-    return run_command([STARCLUSTER_CMD, "loadbalance", CLUSTER_NAME, "-K"])
+    return run_starcluster_cmd(["loadbalance", CLUSTER_NAME, "-K"])
 
-
-@app.route("/submit-job-form")
-@secured
-def submit_job_form():
-    return flask.render_template("submit-job-form.html", form=formspec.ATLANTIS_FORM)
-
-
-def parse_reponse(form, request_params):
+def parse_reponse(fields, request_params, files):
     packed = {}
 
     by_name = collections.defaultdict(lambda: [])
@@ -302,7 +307,7 @@ def parse_reponse(form, request_params):
         for v in request_params.getlist(k):
             by_name[k].append(v.strip())
 
-    for field in form:
+    for field in fields:
         if field.is_text:
             packed[field.label] = by_name[field.label][0]
         elif field.is_enum:
@@ -310,6 +315,11 @@ def parse_reponse(form, request_params):
             if not field.allow_multiple:
                 t = t[0]
             packed[field.label] = t
+        elif field.is_file:
+            file = files[field.label]
+            packed[field.label] = file.read()
+        else:
+            raise Exception("unknown field type")
 
     return packed
 
@@ -350,34 +360,50 @@ def pull_job():
 def retry_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh retry"])
+    return run_starcluster_cmd([ "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh retry"])
 
 @app.route("/check-job")
 @secured
 def check_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh check"])
+    return run_starcluster_cmd([ "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh check"])
 
 @app.route("/poll-job")
 @secured
 def poll_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_command([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh poll"])
+    return run_starcluster_cmd([ "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh poll"])
 import json
 
 @app.route("/syncruns")
 @secured
 def syncRuns():
     master, key_location = get_master_info()
-    return run_command([PYTHON_EXE, "-u", "syncRuns.py", master.dns_name, key_location)
+    return run_command([PYTHON_EXE, "-u", "syncRuns.py", master.dns_name, key_location])
+
+
+@app.route("/submit-generic-job-form")
+@secured
+def submit_generic_job_form():
+    return flask.render_template("submit-job-form.html", form=formspec.GENERIC_FORM)
+
+@app.route("/submit-job-form")
+@secured
+def submit_job_form():
+    return flask.render_template("submit-job-form.html", form=formspec.ATLANTIS_FORM)
 
 @app.route("/submit-job", methods=["POST"])
 @secured
 def submit_job():
-    params = parse_reponse(formspec.ATLANTIS_FORM, request.values)
-    flock_config = formspec.apply_parameters(params)
+    template = request.values['template']
+    matching_forms = [f for f in [formspec.ATLANTIS_FORM, formspec.GENERIC_FORM] if f.template == template]
+    assert len(matching_forms) == 1
+    f = matching_forms[0]
+
+    params = parse_reponse(f.fields, request.values, request.files)
+    flock_config = formspec.apply_parameters(f.template, params)
 
     if "download" in request.values:
         response = flask.make_response(flock_config)
@@ -494,21 +520,22 @@ def prices():
             series.append(get_price_series(t, s, zone))
 
     normalize_series(series)
-    medians = {}
+    per_instance_price = {}
     for s in series:
-        medians[s["name"]] = median([x["y"] for x in s["data"]])
-    medians = medians.items()
-    medians.sort()
+        values = [x["y"] for x in s["data"]]
+        per_instance_price[s["name"]] = (median(values), values[-1])
+    per_instance_price = [ (n, v[0], v[1]) for n, v in per_instance_price.items()]
+    per_instance_price.sort()
 
     for i in range(len(series)):
         series[i]["color"] = colors[i % len(colors)]
-    return flask.render_template("prices.html", series=series, medians=medians)
+    return flask.render_template("prices.html", series=series, per_instance_price=per_instance_price)
 
 
 @secured
 @app.route("/terminate")
 def terminate_cluster():
-    return run_command([STARCLUSTER_CMD, "terminate", "--confirm", CLUSTER_NAME])
+    return run_starcluster_cmd([ "terminate", "--confirm", CLUSTER_NAME])
 
 
 def divide_into_instances(count, instance_type):
@@ -533,13 +560,11 @@ def add_vcpus(vcpus, price_per_vcpu, instance_type):
     # only spawns the first set of machines.  Need to think if we need to support multiple
     #print "vcpus=%s, price_per_vcpu=%s, instance_type=%s" % (vcpus, price_per_vcpu, instance_type)
     for instance_type, count in divide_into_instances(vcpus, instance_type):
-        command = [STARCLUSTER_CMD, "addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I",
+        command = ["addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I",
              instance_type]
         command.extend(["-n", str(count), CLUSTER_NAME])
-        return run_command( command )
+        return run_starcluster_cmd( command )
 
-import traceback
-from werkzeug.debug import tbtools
 
 @app.errorhandler(500)
 def internal_error(exception):
