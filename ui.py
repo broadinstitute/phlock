@@ -22,7 +22,7 @@ import boto.ec2
 import traceback
 from werkzeug.debug import tbtools
 
-STARCLUSTER_CONFIG=os.path.expanduser('~/.starcluster/config')
+STARCLUSTER_CONFIG = os.path.expanduser('~/.starcluster/config')
 
 AUTHORIZED_USERS = ['pmontgom@broadinstitute.org']
 
@@ -34,18 +34,19 @@ config.read(STARCLUSTER_CONFIG)
 if os.path.exists("/xchip/datasci/tools/venvs/starcluster/bin/starcluster"):
     STARCLUSTER_CMD = "/xchip/datasci/tools/venvs/starcluster/bin/starcluster"
     PYTHON_EXE = "/xchip/datasci/tools/venvs/clusterui/bin/python"
-    DEBUG=False
+    DEBUG = False
 else:
     STARCLUSTER_CMD = "starcluster"
     PYTHON_EXE = "python"
-    DEBUG=True
-
+    DEBUG = True
 
 AWS_ACCESS_KEY_ID = config.get("aws info", "AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
 
+
 def filter_inactive_instances(instances):
     return [i for i in instances if not (i.state in ['terminated', 'stopped'])]
+
 
 def find_instances_in_cluster(ec2, cluster_name):
     instances = ec2.get_only_instances()
@@ -67,7 +68,7 @@ def find_master(ec2, cluster_name):
 terminals = {}
 
 instance_sizes = [("c3.large", 2), ("c3.xlarge", 4), ("c3.2xlarge", 8), ("c3.4xlarge", 16), ("c3.8xlarge", 32),
-    ("r3.large", 2), ("r3.xlarge", 4), ("r3.2xlarge",8), ("r3.4xlarge",16), ("r3.8xlarge", 32)]
+                  ("r3.large", 2), ("r3.xlarge", 4), ("r3.2xlarge", 8), ("r3.4xlarge", 16), ("r3.8xlarge", 32)]
 instance_sizes.sort(lambda a, b: -cmp(a[1], b[1]))
 cpus_per_instance = {}
 for instance_type, cpus in instance_sizes:
@@ -152,7 +153,7 @@ def create_term_for_command(id, args):
     # attrs = termios.tcgetattr(slave)
     # print "Attrs", attrs[2]
     # attrs[2] |= termios.ONLCR
-    #  termios.tcsetattr(master, termios.TCSANOW, attrs)
+    # termios.tcsetattr(master, termios.TCSANOW, attrs)
     #  p = subprocess.Popen(args, stdout = master, stderr = subprocess.STDOUT, close_fds=True)
     #  return Terminal(id, p, os.fdopen(slave), " ".join(args))
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
@@ -160,7 +161,8 @@ def create_term_for_command(id, args):
 
 
 def run_starcluster_cmd(args):
-    return run_command([STARCLUSTER_CMD, "-c", STARCLUSTER_CONFIG]+args)
+    return run_command([STARCLUSTER_CMD, "-c", STARCLUSTER_CONFIG] + args)
+
 
 def run_command(args):
     id = uuid.uuid4().hex
@@ -194,6 +196,7 @@ def secured(fn):
 
     return wrapper
 
+
 def create_or_login(resp):
     """This is called when login with OpenID succeeded and it's not
     necessary to figure out if this is the users's first login or not.
@@ -218,6 +221,7 @@ def login():
     openid = "https://crowd.broadinstitute.org:8443/openidserver/op"
     return oid.try_login(openid, ask_for=['email', 'fullname'])
 
+
 @app.route("/logout")
 def logout():
     flask.session.pop("openid", None)
@@ -240,6 +244,7 @@ def index():
 
     return flask.render_template("index.html", terminals=active_terminals, instances=instance_table)
 
+
 @app.route("/add-node-form")
 @secured
 def add_node_form():
@@ -247,21 +252,24 @@ def add_node_form():
     return flask.render_template("add-node-form.html",
                                  instance_types=instance_types)
 
+
 @app.route("/add-nodes", methods=["POST"])
 @secured
 def add_nodes():
     return add_vcpus(int(request.values["vcpus"]), float(request.values["price_per_vcpu"]),
                      request.values["instance_type"])
 
+
 @app.route("/kill-terminal/<id>")
 @secured
-def kill_termina(id):
+def kill_terminal(id):
     if not (id in terminals):
         flask.abort(404)
 
     terminals[id].kill()
 
     return flask.redirect("/terminal/" + id)
+
 
 @app.route("/terminal/<id>")
 @secured
@@ -299,6 +307,7 @@ def start_cluster():
 def start_load_balance():
     return run_starcluster_cmd(["loadbalance", CLUSTER_NAME, "-K"])
 
+
 def parse_reponse(fields, request_params, files):
     packed = {}
 
@@ -331,16 +340,23 @@ def get_master_info():
     key_location = os.path.expanduser(key_location)
     return master, key_location
 
+
 TARGET_ROOT = "/data2/runs"
+
 
 @app.route("/list-jobs")
 def list_jobs():
-    p = subprocess.Popen([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, TARGET_ROOT+"/get_runs.py "+TARGET_ROOT], stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
+    p = subprocess.Popen([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, TARGET_ROOT + "/get_runs.py " + TARGET_ROOT],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     stdout, stderr = p.communicate()
     jobs = json.loads(stdout)
-    return flask.render_template("list-jobs.html", jobs=jobs, column_names=["status", "celllineSubset", "targetDataset", "predictiveFeatureSubset", "targetDataType", "predictiveFeatures"])
+    return flask.render_template("list-jobs.html", jobs=jobs,
+                                 column_names=["status", "celllineSubset", "targetDataset", "predictiveFeatureSubset",
+                                               "targetDataType", "predictiveFeatures"])
+
 
 job_pattern = re.compile("\\d+-\\d+")
+
 
 @app.route("/pull-job")
 @secured
@@ -350,32 +366,43 @@ def pull_job():
     t = tempfile.NamedTemporaryFile(delete=False)
     t.write("set +ex\n")
     t.write("cd /xchip/datasci/ec2-runs\n")
-    t.write("%s sshmaster %s --user ubuntu /xchip/scripts/make_model_summaries.R /data2/runs/%s/files/results\n" % (STARCLUSTER_CMD, CLUSTER_NAME, job_name) )
-    t.write("%s sshmaster %s --user ubuntu python /xchip/scripts/bundle_run_dirs.py /data2/runs/%s | tar xvzf -\n" % (STARCLUSTER_CMD, CLUSTER_NAME, job_name) )
+    t.write("%s sshmaster %s --user ubuntu /xchip/scripts/make_model_summaries.R /data2/runs/%s/files/results\n" % (
+    STARCLUSTER_CMD, CLUSTER_NAME, job_name))
+    t.write("%s sshmaster %s --user ubuntu python /xchip/scripts/bundle_run_dirs.py /data2/runs/%s | tar xvzf -\n" % (
+    STARCLUSTER_CMD, CLUSTER_NAME, job_name))
     t.close()
     return run_command(["bash", t.name])
+
 
 @app.route("/retry-job")
 @secured
 def retry_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_starcluster_cmd([ "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh retry"])
+    return run_starcluster_cmd(["sshmaster", CLUSTER_NAME, "--user", "ubuntu",
+                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh retry"])
+
 
 @app.route("/check-job")
 @secured
 def check_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_starcluster_cmd([ "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh check"])
+    return run_starcluster_cmd(["sshmaster", CLUSTER_NAME, "--user", "ubuntu",
+                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh check"])
+
 
 @app.route("/poll-job")
 @secured
 def poll_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_starcluster_cmd([ "sshmaster", CLUSTER_NAME, "--user", "ubuntu", "bash "+TARGET_ROOT+"/"+job_name+"/flock-wrapper.sh poll"])
+    return run_starcluster_cmd(["sshmaster", CLUSTER_NAME, "--user", "ubuntu",
+                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh poll"])
+
+
 import json
+
 
 @app.route("/syncruns")
 @secured
@@ -389,10 +416,12 @@ def syncRuns():
 def submit_generic_job_form():
     return flask.render_template("submit-job-form.html", form=formspec.GENERIC_FORM)
 
+
 @app.route("/submit-job-form")
 @secured
 def submit_job_form():
     return flask.render_template("submit-job-form.html", form=formspec.ATLANTIS_FORM)
+
 
 @app.route("/submit-job", methods=["POST"])
 @secured
@@ -420,7 +449,10 @@ def submit_job():
         t2.write(json.dumps(params))
         t2.close()
 
-        return run_command([PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name, TARGET_ROOT, t2.name])
+        return run_command(
+            [PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
+             TARGET_ROOT, t2.name])
+
 
 @app.route("/start-tunnel")
 @secured
@@ -437,6 +469,7 @@ def start_tunnel():
 @secured
 def test_run():
     return run_command(["bash", "-c", "while true ; do echo line ; sleep 1 ; date ; done"])
+
 
 def isotodatetime(t):
     if t.endswith("Z"):
@@ -506,11 +539,11 @@ def normalize_series(series):
         s["data"] = normalize(s["data"])
 
 
-
 def median(values):
-  values = list(values)
-  values.sort()
-  return values[len(values)/2]
+    values = list(values)
+    values.sort()
+    return values[len(values) / 2]
+
 
 @app.route("/prices")
 def prices():
@@ -524,7 +557,7 @@ def prices():
     for s in series:
         values = [x["y"] for x in s["data"]]
         per_instance_price[s["name"]] = (median(values), values[-1])
-    per_instance_price = [ (n, v[0], v[1]) for n, v in per_instance_price.items()]
+    per_instance_price = [(n, v[0], v[1]) for n, v in per_instance_price.items()]
     per_instance_price.sort()
 
     for i in range(len(series)):
@@ -535,7 +568,7 @@ def prices():
 @secured
 @app.route("/terminate")
 def terminate_cluster():
-    return run_starcluster_cmd([ "terminate", "--confirm", CLUSTER_NAME])
+    return run_starcluster_cmd(["terminate", "--confirm", CLUSTER_NAME])
 
 
 def divide_into_instances(count, instance_type):
@@ -545,7 +578,7 @@ def divide_into_instances(count, instance_type):
         return [(instance_type, count // cpus_per_instance[instance_type])]
 
     for instance, size in instance_sizes:
-        if(not instance.startswith("c")):
+        if (not instance.startswith("c")):
             continue
 
         instance_count = count // size
@@ -556,22 +589,23 @@ def divide_into_instances(count, instance_type):
 
     return result
 
+
 def add_vcpus(vcpus, price_per_vcpu, instance_type):
     # only spawns the first set of machines.  Need to think if we need to support multiple
-    #print "vcpus=%s, price_per_vcpu=%s, instance_type=%s" % (vcpus, price_per_vcpu, instance_type)
+    # print "vcpus=%s, price_per_vcpu=%s, instance_type=%s" % (vcpus, price_per_vcpu, instance_type)
     for instance_type, count in divide_into_instances(vcpus, instance_type):
         command = ["addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I",
-             instance_type]
+                   instance_type]
         command.extend(["-n", str(count), CLUSTER_NAME])
-        return run_starcluster_cmd( command )
+        return run_starcluster_cmd(command)
 
 
 @app.errorhandler(500)
 def internal_error(exception):
-        app.logger.exception(exception)
-        tb = tbtools.get_current_traceback()
-        print "traceback", tb
-        return flask.render_template('500.html', exception=exception, traceback=tb.plaintext)
+    app.logger.exception(exception)
+    tb = tbtools.get_current_traceback()
+    print "traceback", tb
+    return flask.render_template('500.html', exception=exception, traceback=tb.plaintext)
 
 # map of ID to terminal
 app.secret_key = 'not really secret'
@@ -579,10 +613,10 @@ oid.init_app(app)
 oid.after_login_func = create_or_login
 app.run(host="0.0.0.0", port=9935, debug=DEBUG)
 
-if app.debug is not True:   
+if app.debug is not True:
     import logging
     from logging.handlers import RotatingFileHandler
-#    file_handler = RotatingFileHandler('/xchip/datasci/logs/clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
+    # file_handler = RotatingFileHandler('/xchip/datasci/logs/clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
     file_handler = RotatingFileHandler('clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
     file_handler.setLevel(logging.WARN)
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
