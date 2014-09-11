@@ -419,11 +419,11 @@ def test_run():
 import prices
 
 @app.route("/prices")
-def prices():
+def show_prices():
     series = []
     for zone in ["us-east-1a", "us-east-1b", "us-east-1c"]:
         for t, s in instance_sizes:
-            series.append(prices.get_price_series(t, s, zone))
+            series.append(prices.get_price_series(ec2, t, s, zone))
 
     prices.normalize_series(series)
     per_instance_price = {}

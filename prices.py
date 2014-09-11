@@ -1,4 +1,7 @@
 __author__ = 'pmontgom'
+
+import datetime
+
 def isotodatetime(t):
     if t.endswith("Z"):
         t = t[:-1]
@@ -15,7 +18,7 @@ colors = ["#7fc97f",
           "#666666"]
 
 
-def get_price_series(instance_type, scale, zone="us-east-1a"):
+def get_price_series(ec2, instance_type, scale, zone="us-east-1a"):
     end_time = datetime.datetime.now()
     start_time = end_time - datetime.timedelta(days=1)
 
