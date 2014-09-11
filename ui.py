@@ -1,16 +1,13 @@
-import uuid
 import flask
 from flask import request
-import threading
 import subprocess
-import pyte
-import pty
 import functools
 import formspec
 import datetime
-import time
 import tempfile
 import re
+import term
+import json
 
 from flask.ext.openid import OpenID
 
@@ -22,6 +19,8 @@ import boto.ec2
 import traceback
 from werkzeug.debug import tbtools
 
+import cluster_monitor
+
 STARCLUSTER_CONFIG = os.path.expanduser('~/.starcluster/config')
 
 AUTHORIZED_USERS = ['pmontgom@broadinstitute.org']
@@ -31,13 +30,15 @@ oid = OpenID(None, "/tmp/clusterui-openid")
 config = ConfigParser.ConfigParser()
 config.read(STARCLUSTER_CONFIG)
 
+terminal_manager = term.TerminalManager()
+
 if os.path.exists("/xchip/datasci/tools/venvs/starcluster/bin/starcluster"):
     STARCLUSTER_CMD = "/xchip/datasci/tools/venvs/starcluster/bin/starcluster"
     PYTHON_EXE = "/xchip/datasci/tools/venvs/clusterui/bin/python"
     DEBUG = False
 else:
-    STARCLUSTER_CMD = "starcluster"
-    PYTHON_EXE = "python"
+    STARCLUSTER_CMD = "/Users/pmontgom/venvs/starcluster-dev/bin/starcluster"
+    PYTHON_EXE = "/Users/pmontgom/venvs/starcluster-dev/bin/python"
     DEBUG = True
 
 AWS_ACCESS_KEY_ID = config.get("aws info", "AWS_ACCESS_KEY_ID")
@@ -65,8 +66,6 @@ def find_master(ec2, cluster_name):
     raise Exception("Too many instances named master: %s" % (matches,))
 
 
-terminals = {}
-
 instance_sizes = [("c3.large", 2), ("c3.xlarge", 4), ("c3.2xlarge", 8), ("c3.4xlarge", 16), ("c3.8xlarge", 32),
                   ("r3.large", 2), ("r3.xlarge", 4), ("r3.2xlarge", 8), ("r3.4xlarge", 16), ("r3.8xlarge", 32)]
 instance_sizes.sort(lambda a, b: -cmp(a[1], b[1]))
@@ -80,7 +79,6 @@ CLUSTER_NAME = "c"
 ec2 = boto.ec2.connection.EC2Connection(aws_access_key_id=AWS_ACCESS_KEY_ID,
                                         aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
-
 def get_instance_counts():
     instances = ec2.get_only_instances()
     instances = filter_inactive_instances(instances)
@@ -91,83 +89,13 @@ def get_instance_counts():
     return counts
 
 
-class Terminal(object):
-    def __init__(self, id, proc, stdout, title, command_line=None):
-        self.id = id
-        self.title = title
-        self.command_line = command_line
-        self.proc = proc
-        self.stdout = stdout
-        self.start_time = time.time()
-
-        self.screen = pyte.Screen(145, 140)
-        self.stream = pyte.ByteStream()
-        self.stream.attach(self.screen)
-
-        self.status = "running"
-        self.is_running = True
-        self.lock = threading.Lock()
-        self.thread = threading.Thread(target=self.run)
-        self.thread.start()
-
-    def run(self):
-        while True:
-            buffer = os.read(self.stdout.fileno(), 65536)
-            buffer = buffer.replace("\n", "\r\n")
-            if buffer == '':
-                break
-
-            self.lock.acquire()
-            self.stream.feed(buffer)
-            self.lock.release()
-
-        self.stdout.close()
-        self.proc.wait()
-        self.status = "terminated"
-        self.is_running = False
-
-    def display(self):
-        self.lock.acquire()
-        b = tuple(self.screen.display)
-        self.lock.release()
-        return b
-
-    def is_active(self):
-        return True
-
-    def pid(self):
-        return "?"
-
-    def kill(self):
-        self.proc.terminate()
-        for i in xrange(50):
-            if self.proc.poll() != None:
-                break
-            time.sleep(0.1)
-        if self.proc.poll() == None:
-            self.proc.kill()
-
-
-def create_term_for_command(id, args):
-    master, slave = pty.openpty()
-    # attrs = termios.tcgetattr(slave)
-    # print "Attrs", attrs[2]
-    # attrs[2] |= termios.ONLCR
-    # termios.tcsetattr(master, termios.TCSANOW, attrs)
-    #  p = subprocess.Popen(args, stdout = master, stderr = subprocess.STDOUT, close_fds=True)
-    #  return Terminal(id, p, os.fdopen(slave), " ".join(args))
-    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
-    return Terminal(id, p, p.stdout, " ".join(args))
+def run_command(args):
+    terminal = terminal_manager.start_term(args)
+    return flask.redirect("/terminal/" + terminal.id)
 
 
 def run_starcluster_cmd(args):
     return run_command([STARCLUSTER_CMD, "-c", STARCLUSTER_CONFIG] + args)
-
-
-def run_command(args):
-    id = uuid.uuid4().hex
-    terminals[id] = create_term_for_command(id, args)
-    return flask.redirect("/terminal/" + id)
 
 
 app = flask.Flask(__name__)
@@ -208,6 +136,8 @@ def create_or_login(resp):
     return redirect_with_success("successfully signed in", oid.get_next_url())
 
 
+
+
 @app.route('/login', methods=['GET', 'POST'])
 @oid.loginhandler
 def login():
@@ -239,34 +169,23 @@ def index():
         instance_table.append((instance_type, count, cpus))
     instance_table.append(("Total", "", total))
 
-    active_terminals = [t for t in terminals.values() if t.is_active()]
+    active_terminals = terminal_manager.get_active_terminals()
     active_terminals.sort(lambda a, b: cmp(a.start_time, b.start_time))
 
-    return flask.render_template("index.html", terminals=active_terminals, instances=instance_table)
+    state = cluster_manager.get_state()
+    print "state=%s" % state
 
-
-@app.route("/add-node-form")
-@secured
-def add_node_form():
-    instance_types = [instance_type for instance_type, size in instance_sizes]
-    return flask.render_template("add-node-form.html",
-                                 instance_types=instance_types)
-
-
-@app.route("/add-nodes", methods=["POST"])
-@secured
-def add_nodes():
-    return add_vcpus(int(request.values["vcpus"]), float(request.values["price_per_vcpu"]),
-                     request.values["instance_type"])
+    return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, state=state)
 
 
 @app.route("/kill-terminal/<id>")
 @secured
 def kill_terminal(id):
-    if not (id in terminals):
+    terminal = terminal_manager.get_terminal(id)
+    if terminal == None:
         flask.abort(404)
 
-    terminals[id].kill()
+    terminal.kill()
 
     return flask.redirect("/terminal/" + id)
 
@@ -274,18 +193,19 @@ def kill_terminal(id):
 @app.route("/terminal/<id>")
 @secured
 def show_terminal(id):
-    if not (id in terminals):
+    terminal = terminal_manager.get_terminal(id)
+    if terminal == None:
         flask.abort(404)
 
-    return flask.render_template("show_terminal.html", terminal=terminals[id])
+    return flask.render_template("show_terminal.html", terminal=terminal)
 
 
 @app.route("/terminal-json/<id>")
 def terminal_json(id):
-    if not (id in terminals):
+    terminal = terminal_manager.get_terminal(id)
+    if terminal == None:
         flask.abort(404)
 
-    terminal = terminals[id]
     # trim whitespace on the right
     lines = [l.rstrip() for l in terminal.display()]
 
@@ -295,17 +215,17 @@ def terminal_json(id):
 
     return flask.jsonify(status=terminal.status, is_running=terminal.is_running, screen=("\n".join(lines)))
 
-
 @app.route("/start-cluster")
 @secured
 def start_cluster():
-    return run_starcluster_cmd(["start", CLUSTER_NAME])
+    cluster_manager.start_cluster()
+    return redirect_to_cluster_terminal()
 
-
-@app.route("/start-load-balance")
 @secured
-def start_load_balance():
-    return run_starcluster_cmd(["loadbalance", CLUSTER_NAME, "-K"])
+@app.route("/terminate")
+def terminate_cluster():
+    cluster_manager.stop_cluster()
+    return redirect_to_cluster_terminal()
 
 
 def parse_reponse(fields, request_params, files):
@@ -354,9 +274,7 @@ def list_jobs():
                                  column_names=["status", "celllineSubset", "targetDataset", "predictiveFeatureSubset",
                                                "targetDataType", "predictiveFeatures"])
 
-
 job_pattern = re.compile("\\d+-\\d+")
-
 
 @app.route("/pull-job")
 @secured
@@ -401,7 +319,6 @@ def poll_job():
                                 "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh poll"])
 
 
-import json
 
 
 @app.route("/syncruns")
@@ -454,6 +371,34 @@ def submit_job():
              TARGET_ROOT, t2.name])
 
 
+monitor_parameters = cluster_monitor.Parameters()
+cluster_terminal = None
+cluster_manager = None
+
+def redirect_to_cluster_terminal():
+    return flask.redirect("/terminal/" + cluster_terminal.id)
+
+@app.route("/edit-monitor-parameters")
+@secured
+def edit_monitor_request():
+    return flask.render_template("edit_monitor_parameters.html", param=monitor_parameters)
+
+@app.route("/set-monitor-parameters", methods=["POST"])
+@secured
+def set_monitor_parameters():
+    values = request.values
+
+    monitor_parameters.spot_bid=float(values['spot_bid'])
+    monitor_parameters.max_to_add=int(values['max_to_add'])
+    monitor_parameters.time_per_job=int(values['time_per_job'])
+    monitor_parameters.time_to_add_servers_fixed=int(values['time_to_add_servers_fixed'])
+    monitor_parameters.time_to_add_servers_per_server=int(values['time_to_add_servers_per_server'])
+    monitor_parameters.instance_type=values['instance_type']
+    monitor_parameters.domain=values['domain']
+    monitor_parameters.jobs_per_server=int(values['jobs_per_server'])
+
+    return flask.redirect("/")
+
 @app.route("/start-tunnel")
 @secured
 def start_tunnel():
@@ -471,133 +416,26 @@ def test_run():
     return run_command(["bash", "-c", "while true ; do echo line ; sleep 1 ; date ; done"])
 
 
-def isotodatetime(t):
-    if t.endswith("Z"):
-        t = t[:-1]
-    return datetime.datetime.strptime(t, "%Y-%m-%dT%H:%M:%S.%f")
-
-
-colors = ["#7fc97f",
-          "#beaed4",
-          "#fdc086",
-          "#ffff99",
-          "#386cb0",
-          "#f0027f",
-          "#bf5b17",
-          "#666666"]
-
-
-def get_price_series(instance_type, scale, zone="us-east-1a"):
-    end_time = datetime.datetime.now()
-    start_time = end_time - datetime.timedelta(days=1)
-
-    prices = ec2.get_spot_price_history(start_time=start_time.isoformat(), end_time=end_time.isoformat(),
-                                        instance_type=instance_type, product_description="Linux/UNIX",
-                                        availability_zone=zone, max_results=None, next_token=None)
-
-    result = dict(
-        data=[dict(x=(isotodatetime(p.timestamp) - end_time).seconds / (60.0 * 60), y=p.price / scale) for p in prices],
-        name="%s %s" % (zone, instance_type),
-        color="lightblue")
-
-    result["data"].sort(lambda a, b: cmp(a["x"], b["x"]))
-
-    return result
-
-
-def normalize_series(series):
-    def bucket(v):
-        return int(v / 0.05) * 0.05
-
-    all_x_values = set()
-    for s in series:
-        all_x_values.update([bucket(x["x"]) for x in s['data']])
-    all_x_values = list(all_x_values)
-    all_x_values.sort()
-
-    def normalize(values):
-        new_values = []
-
-        xi = 0
-        y = None
-        for i in xrange(len(values)):
-            v = values[i]
-            x = bucket(v["x"])
-            y = v["y"]
-
-            while xi < len(all_x_values) and all_x_values[xi] < x:
-                new_values.append(dict(x=all_x_values[xi], y=y))
-                xi += 1
-            new_values.append(dict(x=x, y=y))
-        while xi < len(all_x_values) and y != None:
-            new_values.append(dict(x=all_x_values[xi], y=y))
-            xi += 1
-
-        return new_values
-
-    for s in series:
-        s["data"] = normalize(s["data"])
-
-
-def median(values):
-    values = list(values)
-    values.sort()
-    return values[len(values) / 2]
-
+import prices
 
 @app.route("/prices")
 def prices():
     series = []
     for zone in ["us-east-1a", "us-east-1b", "us-east-1c"]:
         for t, s in instance_sizes:
-            series.append(get_price_series(t, s, zone))
+            series.append(prices.get_price_series(t, s, zone))
 
-    normalize_series(series)
+    prices.normalize_series(series)
     per_instance_price = {}
     for s in series:
         values = [x["y"] for x in s["data"]]
-        per_instance_price[s["name"]] = (median(values), values[-1])
+        per_instance_price[s["name"]] = (prices.median(values), values[-1])
     per_instance_price = [(n, v[0], v[1]) for n, v in per_instance_price.items()]
     per_instance_price.sort()
 
     for i in range(len(series)):
-        series[i]["color"] = colors[i % len(colors)]
+        series[i]["color"] = prices.colors[i % len(prices.colors)]
     return flask.render_template("prices.html", series=series, per_instance_price=per_instance_price)
-
-
-@secured
-@app.route("/terminate")
-def terminate_cluster():
-    return run_starcluster_cmd(["terminate", "--confirm", CLUSTER_NAME])
-
-
-def divide_into_instances(count, instance_type):
-    result = []
-
-    if instance_type != "":
-        return [(instance_type, count // cpus_per_instance[instance_type])]
-
-    for instance, size in instance_sizes:
-        if (not instance.startswith("c")):
-            continue
-
-        instance_count = count // size
-        if instance_count == 0:
-            continue
-        result.append((instance, instance_count))
-        count -= instance_count * size
-
-    return result
-
-
-def add_vcpus(vcpus, price_per_vcpu, instance_type):
-    # only spawns the first set of machines.  Need to think if we need to support multiple
-    # print "vcpus=%s, price_per_vcpu=%s, instance_type=%s" % (vcpus, price_per_vcpu, instance_type)
-    for instance_type, count in divide_into_instances(vcpus, instance_type):
-        command = ["addnode", "-b", "%.4f" % (price_per_vcpu * cpus_per_instance[instance_type]), "-I",
-                   instance_type]
-        command.extend(["-n", str(count), CLUSTER_NAME])
-        return run_starcluster_cmd(command)
 
 
 @app.errorhandler(500)
@@ -607,11 +445,21 @@ def internal_error(exception):
     print "traceback", tb
     return flask.render_template('500.html', exception=exception, traceback=tb.plaintext)
 
-# map of ID to terminal
-app.secret_key = 'not really secret'
-oid.init_app(app)
-oid.after_login_func = create_or_login
-app.run(host="0.0.0.0", port=9935, debug=DEBUG)
+@app.before_first_request
+def init_manager():
+    global cluster_terminal
+    global cluster_manager
+
+    cluster_terminal = terminal_manager.start_named_terminal("Cluster monitor")
+    cluster_manager = cluster_monitor.ClusterManager(monitor_parameters, CLUSTER_NAME, cluster_terminal, [STARCLUSTER_CMD, "-c", STARCLUSTER_CONFIG])
+    cluster_manager.start_manager()
+
+if __name__ == "__main__":
+    app.secret_key = 'not really secret'
+    oid.init_app(app)
+    oid.after_login_func = create_or_login
+
+    app.run(host="0.0.0.0", port=9935, debug=DEBUG)
 
 if app.debug is not True:
     import logging
