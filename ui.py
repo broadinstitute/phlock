@@ -22,7 +22,7 @@ import cluster_monitor
 import argparse
 import logging
 import prices
-
+from instance_types import cpus_per_instance, instance_sizes
 
 oid = OpenID(None, "/tmp/clusterui-openid")
 terminal_manager = term.TerminalManager()
@@ -62,15 +62,6 @@ def find_master(ec2, cluster_name):
     if len(matches) == 1:
         return matches[0]
     raise Exception("Too many instances named master: %s" % (matches,))
-
-
-instance_sizes = [("c3.large", 2), ("c3.xlarge", 4), ("c3.2xlarge", 8), ("c3.4xlarge", 16), ("c3.8xlarge", 32),
-                  ("r3.large", 2), ("r3.xlarge", 4), ("r3.2xlarge", 8), ("r3.4xlarge", 16), ("r3.8xlarge", 32)]
-instance_sizes.sort(lambda a, b: -cmp(a[1], b[1]))
-cpus_per_instance = {}
-for instance_type, cpus in instance_sizes:
-    cpus_per_instance[instance_type] = cpus
-cpus_per_instance['m3.medium'] = 1
 
 
 
@@ -149,7 +140,6 @@ def login():
 def logout():
     flask.session.pop("openid", None)
     return redirect_with_success("You were logged out", "/")
-
 
 @app.route("/")
 def index():
