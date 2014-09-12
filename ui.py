@@ -3,7 +3,6 @@ from flask import request
 import subprocess
 import functools
 import formspec
-import datetime
 import tempfile
 import re
 import term
@@ -16,34 +15,33 @@ import collections
 import ConfigParser, os
 import boto.ec2
 
-import traceback
+#import traceback
 from werkzeug.debug import tbtools
 
 import cluster_monitor
+import argparse
+import logging
+import prices
 
-STARCLUSTER_CONFIG = os.path.expanduser('~/.starcluster/config')
-
-AUTHORIZED_USERS = ['pmontgom@broadinstitute.org']
 
 oid = OpenID(None, "/tmp/clusterui-openid")
-
-config = ConfigParser.ConfigParser()
-config.read(STARCLUSTER_CONFIG)
-
 terminal_manager = term.TerminalManager()
 
-if os.path.exists("/xchip/datasci/tools/venvs/starcluster/bin/starcluster"):
-    STARCLUSTER_CMD = "/xchip/datasci/tools/venvs/starcluster/bin/starcluster"
-    PYTHON_EXE = "/xchip/datasci/tools/venvs/clusterui/bin/python"
-    DEBUG = False
-else:
-    STARCLUSTER_CMD = "/Users/pmontgom/venvs/starcluster-dev/bin/starcluster"
-    PYTHON_EXE = "/Users/pmontgom/venvs/starcluster-dev/bin/python"
-    DEBUG = True
+from werkzeug.local import LocalProxy
+def _get_current_config():
+    return flask.current_app.config
 
-AWS_ACCESS_KEY_ID = config.get("aws info", "AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
+config = LocalProxy(_get_current_config)
 
+def load_starcluster_config(app_config):
+    config = ConfigParser.ConfigParser()
+    config.read(app_config['STARCLUSTER_CONFIG'])
+    app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
+    app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
+
+def get_ec2_connection():
+    return boto.ec2.connection.EC2Connection(aws_access_key_id=config['AWS_ACCESS_KEY_ID'],
+                                        aws_secret_access_key=config['AWS_SECRET_ACCESS_KEY'])
 
 def filter_inactive_instances(instances):
     return [i for i in instances if not (i.state in ['terminated', 'stopped'])]
@@ -74,12 +72,9 @@ for instance_type, cpus in instance_sizes:
     cpus_per_instance[instance_type] = cpus
 cpus_per_instance['m3.medium'] = 1
 
-CLUSTER_NAME = "c"
 
-ec2 = boto.ec2.connection.EC2Connection(aws_access_key_id=AWS_ACCESS_KEY_ID,
-                                        aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
 
-def get_instance_counts():
+def get_instance_counts(ec2):
     instances = ec2.get_only_instances()
     instances = filter_inactive_instances(instances)
     counts = collections.defaultdict(lambda: 0)
@@ -95,11 +90,9 @@ def run_command(args):
 
 
 def run_starcluster_cmd(args):
-    return run_command([STARCLUSTER_CMD, "-c", STARCLUSTER_CONFIG] + args)
-
+    return run_command([config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']] + args)
 
 app = flask.Flask(__name__)
-
 
 def redirect_with_success(msg, url):
     flask.flash(msg, 'success')
@@ -115,7 +108,7 @@ def secured(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         if 'email' in flask.session:
-            if not (flask.session['email'] in AUTHORIZED_USERS):
+            if not (flask.session['email'] in config['AUTHORIZED_USERS']):
                 return redirect_with_error("/login", "You are not authorized to use this application")
 
             return fn(*args, **kwargs)
@@ -160,7 +153,8 @@ def logout():
 
 @app.route("/")
 def index():
-    instances = get_instance_counts()
+    ec2 = get_ec2_connection()
+    instances = get_instance_counts(ec2)
     instance_table = []
     total = 0
     for instance_type, count in instances.items():
@@ -253,8 +247,8 @@ def parse_reponse(fields, request_params, files):
     return packed
 
 
-def get_master_info():
-    master = find_master(ec2, CLUSTER_NAME)
+def get_master_info(ec2):
+    master = find_master(ec2, config['CLUSTER_NAME'])
 
     key_location = config.get("key %s" % master.key_name, "KEY_LOCATION")
     key_location = os.path.expanduser(key_location)
@@ -266,7 +260,7 @@ TARGET_ROOT = "/data2/runs"
 
 @app.route("/list-jobs")
 def list_jobs():
-    p = subprocess.Popen([STARCLUSTER_CMD, "sshmaster", CLUSTER_NAME, TARGET_ROOT + "/get_runs.py " + TARGET_ROOT],
+    p = subprocess.Popen([config['STARCLUSTER_CMD'], "sshmaster", config['CLUSTER_NAME'], TARGET_ROOT + "/get_runs.py " + TARGET_ROOT],
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     stdout, stderr = p.communicate()
     jobs = json.loads(stdout)
@@ -285,9 +279,9 @@ def pull_job():
     t.write("set +ex\n")
     t.write("cd /xchip/datasci/ec2-runs\n")
     t.write("%s sshmaster %s --user ubuntu /xchip/scripts/make_model_summaries.R /data2/runs/%s/files/results\n" % (
-    STARCLUSTER_CMD, CLUSTER_NAME, job_name))
+        config['STARCLUSTER_CMD'], config['CLUSTER_NAME'], job_name))
     t.write("%s sshmaster %s --user ubuntu python /xchip/scripts/bundle_run_dirs.py /data2/runs/%s | tar xvzf -\n" % (
-    STARCLUSTER_CMD, CLUSTER_NAME, job_name))
+        config['STARCLUSTER_CMD'], config['CLUSTER_NAME'], job_name))
     t.close()
     return run_command(["bash", t.name])
 
@@ -297,7 +291,7 @@ def pull_job():
 def retry_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_starcluster_cmd(["sshmaster", CLUSTER_NAME, "--user", "ubuntu",
+    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
                                 "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh retry"])
 
 
@@ -306,7 +300,7 @@ def retry_job():
 def check_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_starcluster_cmd(["sshmaster", CLUSTER_NAME, "--user", "ubuntu",
+    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
                                 "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh check"])
 
 
@@ -315,7 +309,7 @@ def check_job():
 def poll_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
-    return run_starcluster_cmd(["sshmaster", CLUSTER_NAME, "--user", "ubuntu",
+    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
                                 "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh poll"])
 
 
@@ -324,8 +318,9 @@ def poll_job():
 @app.route("/syncruns")
 @secured
 def syncRuns():
-    master, key_location = get_master_info()
-    return run_command([PYTHON_EXE, "-u", "syncRuns.py", master.dns_name, key_location])
+    ec2 = get_ec2_connection()
+    master, key_location = get_master_info(ec2)
+    return run_command([config['PYTHON_EXE'], "-u", "syncRuns.py", master.dns_name, key_location])
 
 
 @app.route("/submit-generic-job-form")
@@ -356,7 +351,8 @@ def submit_job():
         response.headers["Content-Disposition"] = "attachment; filename=config.flock"
         return response
     else:
-        master, key_location = get_master_info()
+        ec2 = get_ec2_connection()
+        master, key_location = get_master_info(ec2)
 
         t = tempfile.NamedTemporaryFile(delete=False)
         t.write(flock_config)
@@ -367,7 +363,7 @@ def submit_job():
         t2.close()
 
         return run_command(
-            [PYTHON_EXE, "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
+            [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
              TARGET_ROOT, t2.name])
 
 
@@ -402,7 +398,9 @@ def set_monitor_parameters():
 @app.route("/start-tunnel")
 @secured
 def start_tunnel():
-    master, key_location = get_master_info()
+    ec2 = get_ec2_connection()
+
+    master, key_location = get_master_info(ec2)
 
     return run_command(["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                         "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
@@ -415,11 +413,10 @@ def start_tunnel():
 def test_run():
     return run_command(["bash", "-c", "while true ; do echo line ; sleep 1 ; date ; done"])
 
-
-import prices
-
 @app.route("/prices")
 def show_prices():
+    ec2 = get_ec2_connection()
+
     series = []
     for zone in ["us-east-1a", "us-east-1b", "us-east-1c"]:
         for t, s in instance_sizes:
@@ -451,22 +448,27 @@ def init_manager():
     global cluster_manager
 
     cluster_terminal = terminal_manager.start_named_terminal("Cluster monitor")
-    cluster_manager = cluster_monitor.ClusterManager(monitor_parameters, CLUSTER_NAME, cluster_terminal, [STARCLUSTER_CMD, "-c", STARCLUSTER_CONFIG])
+    cluster_manager = cluster_monitor.ClusterManager(monitor_parameters, config['CLUSTER_NAME'], cluster_terminal, [config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']])
     cluster_manager.start_manager()
 
 if __name__ == "__main__":
-    app.secret_key = 'not really secret'
+    parser = argparse.ArgumentParser(description='Start webserver for cluster ui')
+    parser.add_argument('--config', dest="config_path", help='config file to use', default=os.path.expanduser("~/.clusterui.config"))
+    args = parser.parse_args()
+
+    app.config.update(LOG_FILE='clusterui.log', DEBUG=True, PORT=9935)
+    app.config.from_pyfile(args.config_path)
+    load_starcluster_config(app.config)
+
     oid.init_app(app)
     oid.after_login_func = create_or_login
 
-    app.run(host="0.0.0.0", port=9935, debug=DEBUG)
+    app.run(host="0.0.0.0", port=app.config['PORT'], debug=app.config['DEBUG'])
 
-if app.debug is not True:
-    import logging
-    from logging.handlers import RotatingFileHandler
-    # file_handler = RotatingFileHandler('/xchip/datasci/logs/clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
-    file_handler = RotatingFileHandler('clusterui.log', maxBytes=1024 * 1024 * 100, backupCount=20)
-    file_handler.setLevel(logging.WARN)
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    file_handler.setFormatter(formatter)
-    app.logger.addHandler(file_handler)
+    if app.debug is not True:
+        from logging.handlers import RotatingFileHandler
+        file_handler = RotatingFileHandler(app.config['LOG_FILE'], maxBytes=1024 * 1024 * 100, backupCount=20)
+        file_handler.setLevel(logging.WARN)
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        file_handler.setFormatter(formatter)
+        app.logger.addHandler(file_handler)
