@@ -3,6 +3,7 @@ import time
 import threading
 import Queue
 import traceback
+from instance_types import cpus_per_instance
 
 class Parameters:
     def __init__(self):
@@ -18,7 +19,9 @@ class Parameters:
         self.jobs_per_server=1
 
     def generate_args(self):
-        return ["--spot_bid", str(self.spot_bid),
+        cpus = cpus_per_instance[self.instance_type]
+
+        return ["--spot_bid", str(self.spot_bid * cpus),
                 "--max_to_add", str(self.max_to_add),
                 "--time_per_job", str(self.time_per_job),
                 "--time_to_add_servers_fixed", str(self.time_to_add_servers_fixed),
