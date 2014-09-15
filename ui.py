@@ -38,6 +38,9 @@ def load_starcluster_config(app_config):
     config.read(app_config['STARCLUSTER_CONFIG'])
     app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
     app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
+    default_template = config.get("global", "DEFAULT_TEMPLATE")
+    key_name = config.get("cluster %s" % default_template, "KEYNAME")
+    app_config['KEY_LOCATION'] = os.path.expanduser(config.get("key %s" % key_name, "KEY_LOCATION"))
 
 def get_ec2_connection():
     return boto.ec2.connection.EC2Connection(aws_access_key_id=config['AWS_ACCESS_KEY_ID'],
@@ -240,9 +243,7 @@ def parse_reponse(fields, request_params, files):
 def get_master_info(ec2):
     master = find_master(ec2, config['CLUSTER_NAME'])
 
-    key_location = config.get("key %s" % master.key_name, "KEY_LOCATION")
-    key_location = os.path.expanduser(key_location)
-    return master, key_location
+    return master, config['KEY_LOCATION']
 
 
 TARGET_ROOT = "/data2/runs"
