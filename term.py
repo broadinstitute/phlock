@@ -102,6 +102,7 @@ class Terminal(object):
 
 
 def create_term_for_command(id, args):
+    print "executing ", args
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
     t = Terminal(id, " ".join(args))
     t.attach(p.stdout, lambda: t.run_until_terminate(p), p)
