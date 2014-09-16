@@ -111,7 +111,7 @@ class ClusterManager(object):
     def _execute_startup(self):
         cmd, flag, config = self.cmd_prefix
         assert flag == "-c"
-        self._run_cmd(["./start_cluster.sh", cmd, config], "start-completed")
+        self._run_cmd(["./start_cluster.sh", cmd, config, self.cluster_name], "start-completed")
         self.state = CM_STARTING
 
     def _execute_sleep_then_poll(self):
