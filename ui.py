@@ -36,6 +36,12 @@ config = LocalProxy(_get_current_config)
 def load_starcluster_config(app_config):
     config = ConfigParser.ConfigParser()
     config.read(app_config['STARCLUSTER_CONFIG'])
+    include_paths = config.get("global", "include")
+    if include_paths != None:
+        include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
+        for path in include_paths:
+          config.read(path)
+    
     app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
     app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
     default_template = config.get("global", "DEFAULT_TEMPLATE")
