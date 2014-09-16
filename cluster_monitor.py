@@ -141,7 +141,6 @@ class ClusterManager(object):
             if self.state in [CM_STARTING, CM_STOPPING, CM_UPDATING]:
                 self.requested_stop = True
             elif self.state in [CM_SLEEPING, CM_STOPPED]:
-                print("xecut schut")
                 self._execute_shutdown()
             else:
                 print "stop but state = %s" % self.state
@@ -157,5 +156,5 @@ class ClusterManager(object):
         elif cmd == "stop-completed":
             if self.state == CM_STOPPING:
                 self.state = CM_STOPPED
-
-
+        else:
+            print "Unhandled cmd: %s!!!!" % cmd

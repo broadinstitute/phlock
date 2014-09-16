@@ -75,6 +75,7 @@ class Terminal(object):
         self.stdout.close()
         self.status = "terminated"
         self.is_running = False
+        print "process in terminal %s has ended.  Notifying promise" % self.id
         self.completion_promise.done()
 
     def display(self):
