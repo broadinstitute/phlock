@@ -257,7 +257,12 @@ TARGET_ROOT = "/data2/runs"
 
 @app.route("/list-jobs")
 def list_jobs():
-    p = subprocess.Popen([config['STARCLUSTER_CMD'], "sshmaster", config['CLUSTER_NAME'], TARGET_ROOT + "/get_runs.py " + TARGET_ROOT],
+    cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+                        "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
+                        "-i", key_location, 
+                        "ubuntu@" + master.dns_name, TARGET_ROOT + "/get_runs.py " + TARGET_ROOT]
+
+    p = subprocess.Popen(cmd,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     stdout, stderr = p.communicate()
     jobs = json.loads(stdout)
