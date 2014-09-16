@@ -95,19 +95,23 @@ class ClusterManager(object):
     def get_state(self):
         return self.state
 
-    def _run_starcluster_cmd(self, args, post_execute_msg):
-        args = self.cmd_prefix + args
+    def _run_cmd(self, args, post_execute_msg):
         print "executing %s" % args
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
         completion = self.terminal.attach(p.stdout, lambda: self.terminal.run_until_terminate(p), p)
         completion.then(lambda: self.tell(post_execute_msg))
+
+    def _run_starcluster_cmd(self, args, post_execute_msg):
+        self._run_cmd(self.cmd_prefix + args, post_execute_msg)
 
     def _execute_shutdown(self):
         self._run_starcluster_cmd(["terminate", "--confirm", self.cluster_name], "stop-completed")
         self.state = CM_STOPPING
 
     def _execute_startup(self):
-        self._run_starcluster_cmd(["start", self.cluster_name], "start-completed")
+        cmd, flag, config = self.cmd_prefix
+        assert flag == "-c"
+        self._run_cmd(["./start_cluster.sh", cmd, config], "start-completed")
         self.state = CM_STARTING
 
     def _execute_sleep_then_poll(self):
