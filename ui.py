@@ -261,7 +261,7 @@ def get_master_info(ec2):
 
 @app.route("/list-jobs")
 def list_jobs():
-    master, key_location = find_master_info(get_ec2_connection())
+    master, key_location = get_master_info(get_ec2_connection())
 
     cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                         "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
@@ -271,7 +271,11 @@ def list_jobs():
     p = subprocess.Popen(cmd,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     stdout, stderr = p.communicate()
-    jobs = json.loads(stdout)
+    try:
+        jobs = json.loads(stdout)
+    except ValueError:
+        return flask.render_string("Could not parse:\n"+stdout+"\n"+stderr);
+
     return flask.render_template("list-jobs.html", jobs=jobs,
                                  column_names=["status", "celllineSubset", "targetDataset", "predictiveFeatureSubset",
                                                "targetDataType", "predictiveFeatures"])
@@ -456,7 +460,15 @@ def init_manager():
     global cluster_terminal
     global cluster_manager
 
-    cluster_terminal = terminal_manager.start_named_terminal("Cluster monitor")
+    log_file = None
+
+    if "MONITOR_LOG" in config:
+        log_file = open(config["MONITOR_LOG"], "a")
+
+    if "MONITOR_JSON_LOG" in config:
+        monitor_parameters.log_file = config["MONITOR_JSON_LOG"]
+
+    cluster_terminal = terminal_manager.start_named_terminal("Cluster monitor", log_file=log_file)
     instance_id = "host=%s, pid=%d" % (socket.getfqdn(), os.getpid())
     cluster_manager = cluster_monitor.ClusterManager(monitor_parameters, config['CLUSTER_NAME'], config["CLUSTER_TEMPLATE"], cluster_terminal, [config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']], instance_id, get_ec2_connection())
     cluster_manager.start_manager()

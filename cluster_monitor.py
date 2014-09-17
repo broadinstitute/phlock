@@ -18,6 +18,7 @@ class Parameters:
         self.domain="cluster-deadmans-switch"
         self.dryrun=False
         self.jobs_per_server=1
+        self.log_file = None
 
     def generate_args(self):
         cpus = cpus_per_instance[self.instance_type]
@@ -29,7 +30,8 @@ class Parameters:
                 "--time_to_add_servers_per_server", str(self.time_to_add_servers_per_server),
                 "--instance_type", str(self.instance_type),
                 "--domain", self.domain,
-                "--jobs_per_server", str(self.jobs_per_server)
+                "--jobs_per_server", str(self.jobs_per_server),
+                "--logfile", self.log_file
                 ]
 
 

@@ -31,7 +31,7 @@ class Promise(object):
             callback()
 
 class Terminal(object):
-    def __init__(self, id, title, command_line=None):
+    def __init__(self, id, title, command_line=None, log_file=None):
         self.id = id
         self.title = title
         self.command_line = command_line
@@ -63,14 +63,19 @@ class Terminal(object):
     def run_until_terminate(self, proc):
         while True:
             buffer = os.read(self.stdout.fileno(), 65536)
-            buffer = buffer.replace("\n", "\r\n")
-            if buffer == '':
+            xbuffer = buffer.replace("\n", "\r\n")
+            if xbuffer == '':
                 break
 
             self.lock.acquire()
-            self.stream.feed(buffer)
+            self.stream.feed(xbuffer)
+            if self.log_file != None:
+                self.log_file.write(buffer)
             self.lock.release()
         proc.wait()
+
+        if self.log_file != None:
+            self.log_file.flush()
 
         self.stdout.close()
         self.status = "terminated"
@@ -147,7 +152,7 @@ class TerminalManager:
     def get_terminal(self, id):
         return self.terminals[id]
 
-    def start_named_terminal(self, title):
+    def start_named_terminal(self, title, log_file=None):
         id = uuid.uuid4().hex
         terminal = Terminal(id, title)
         self.terminals[id] = terminal
