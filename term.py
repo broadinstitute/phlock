@@ -45,6 +45,7 @@ class Terminal(object):
         self.is_running = True
         self.lock = threading.Lock()
         self.is_canceled = False
+        self.log_file = log_file
 
     def attach(self, stdout, main_loop, proc):
         self.proc = proc
@@ -154,7 +155,7 @@ class TerminalManager:
 
     def start_named_terminal(self, title, log_file=None):
         id = uuid.uuid4().hex
-        terminal = Terminal(id, title)
+        terminal = Terminal(id, title, log_file=log_file)
         self.terminals[id] = terminal
         return terminal
 
