@@ -7,9 +7,10 @@ from instance_types import cpus_per_instance
 
 class Parameters:
     def __init__(self):
+        self.is_paused=True
         self.interval=30
         self.spot_bid=0.01
-        self.max_to_add=5
+        self.max_to_add=1
         self.time_per_job=30 * 60
         self.time_to_add_servers_fixed=60
         self.time_to_add_servers_per_server=30
@@ -41,7 +42,7 @@ CM_SLEEPING = "sleeping"
 CM_STOPPING = "stopping"
 
 class ClusterManager(object):
-    def __init__(self, monitor_parameters, cluster_name, terminal, cmd_prefix):
+    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2):
         super(ClusterManager, self).__init__()
         self.state = CM_STOPPED
         self.requested_stop = False
@@ -50,6 +51,9 @@ class ClusterManager(object):
         self.terminal = terminal
         self.queue = Queue.Queue()
         self.cmd_prefix = cmd_prefix
+        self.clusterui_identifier = clusterui_identifier
+        self.ec2 = ec2
+        self.cluster_template = cluster_template
 
     def _send_wakeup(self):
         self.tell("update")
@@ -111,7 +115,7 @@ class ClusterManager(object):
     def _execute_startup(self):
         cmd, flag, config = self.cmd_prefix
         assert flag == "-c"
-        self._run_cmd(["./start_cluster.sh", cmd, config, self.cluster_name], "start-completed")
+        self._run_cmd(["./start_cluster.sh", cmd, config, self.cluster_name, self.cluster_template], "start-completed")
         self.state = CM_STARTING
 
     def _execute_sleep_then_poll(self):
@@ -119,10 +123,31 @@ class ClusterManager(object):
         sleep_timer = threading.Timer(self.monitor_parameters.interval, self._send_wakeup)
         sleep_timer.start()
 
+    def _verify_ownership_of_cluster(self, steal_ownership=False):
+        security_group_name = "@sc-%s" % self.cluster_name
+        security_groups = self.ec2.get_all_security_groups([security_group_name])
+        if len(security_groups) == 0:
+            return
+
+        security_group_id = security_groups[0].id
+
+        tags = self.ec2.get_all_tags(filters={"resource-id": security_group_id, "key": "clusterui-instance"})
+        if len(tags) == 0 or steal_ownership:
+            self.ec2.create_tags([security_group_id], {"clusterui-instance", self.clusterui_identifier})
+        else:
+            assert len(tags) == 1
+            tag = tags[0]
+            assert tag.value == self.clusterui_identifier
+
     def _execute_poll(self):
         self.state = CM_UPDATING
-        args = self.monitor_parameters.generate_args()
-        self._run_starcluster_cmd(["scalecluster", self.cluster_name] + args, "update-completed")
+        if not self.monitor_parameters.is_paused:
+            self._verify_ownership_of_cluster()
+
+            args = self.monitor_parameters.generate_args()
+            self._run_starcluster_cmd(["scalecluster", self.cluster_name] + args, "update-completed")
+        else:
+            self.tell("update-completed")
 
     def on_receive(self, message):
         if isinstance(message, dict):

@@ -4,6 +4,14 @@
 
     <form class="form-horizontal" role="form" method="post" action="/set-monitor-parameters">
         <div class="form-group">
+            <label for="is_paused" class="col-sm-3 control-label">Is paused</label>
+
+            <div class="col-sm-3">
+                <input type="checkbox" class="form-control" id="is_paused" name="is_paused" {% if param.is_paused %} checked {% endif %}">
+            </div>
+        </div>
+
+        <div class="form-group">
             <label for="spot_bid" class="col-sm-3 control-label">Max price per cpu-hour</label>
 
             <div class="col-sm-3">

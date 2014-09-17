@@ -2,8 +2,8 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 
-  <h1><a href="http://star.mit.edu/cluster/">StarCluster</a> manager (cluster-monitor is {{ state }})</h1>
-  
+  <h1><a href="http://star.mit.edu/cluster/">StarCluster</a> manager {{ config["CLUSTER_NAME"] }} (cluster-monitor is {{ state }})</h1>
+
   <ul>
   	<li><a href="/prices">prices</a></li>
     <li><a href="/edit-monitor-parameters">Edit cluster parameters</a></li>

@@ -7,6 +7,7 @@ import tempfile
 import re
 import term
 import json
+import socket
 
 from flask.ext.openid import OpenID
 
@@ -31,6 +32,9 @@ from werkzeug.local import LocalProxy
 def _get_current_config():
     return flask.current_app.config
 
+TARGET_ROOT = "/data2/runs"
+
+
 config = LocalProxy(_get_current_config)
 
 def load_starcluster_config(app_config):
@@ -44,8 +48,10 @@ def load_starcluster_config(app_config):
     
     app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
     app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
-    default_template = config.get("global", "DEFAULT_TEMPLATE")
-    key_name = config.get("cluster %s" % default_template, "KEYNAME")
+    if not ("CLUSTER_TEMPLATE" in app_config):
+        app_config["CLUSTER_TEMPLATE"] = config.get("global", "DEFAULT_TEMPLATE")
+
+    key_name = config.get("cluster %s" % app_config["CLUSTER_TEMPLATE"], "KEYNAME")
     app_config['KEY_LOCATION'] = os.path.expanduser(config.get("key %s" % key_name, "KEY_LOCATION"))
 
 def get_ec2_connection():
@@ -252,11 +258,11 @@ def get_master_info(ec2):
     return master, config['KEY_LOCATION']
 
 
-TARGET_ROOT = "/data2/runs"
-
 
 @app.route("/list-jobs")
 def list_jobs():
+    master, key_location = find_master_info(get_ec2_connection())
+
     cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                         "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
                         "-i", key_location, 
@@ -444,13 +450,15 @@ def internal_error(exception):
     print "traceback", tb
     return flask.render_template('500.html', exception=exception, traceback=tb.plaintext)
 
+
 @app.before_first_request
 def init_manager():
     global cluster_terminal
     global cluster_manager
 
     cluster_terminal = terminal_manager.start_named_terminal("Cluster monitor")
-    cluster_manager = cluster_monitor.ClusterManager(monitor_parameters, config['CLUSTER_NAME'], cluster_terminal, [config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']])
+    instance_id = "host=%s, pid=%d" % (socket.getfqdn(), os.getpid())
+    cluster_manager = cluster_monitor.ClusterManager(monitor_parameters, config['CLUSTER_NAME'], config["CLUSTER_TEMPLATE"], cluster_terminal, [config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']], instance_id, get_ec2_connection())
     cluster_manager.start_manager()
 
 if __name__ == "__main__":
