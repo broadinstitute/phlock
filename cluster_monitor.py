@@ -71,6 +71,7 @@ class ClusterManager(object):
             assert "security group" in output
             cluster_is_running = True
             self.state = CM_STARTING
+            self._verify_ownership_of_cluster(steal_ownership=True)
 
         self.thread = threading.Thread(target=self.run)
         self.thread.daemon = True
@@ -126,14 +127,14 @@ class ClusterManager(object):
     def _verify_ownership_of_cluster(self, steal_ownership=False):
         security_group_name = "@sc-%s" % self.cluster_name
         security_groups = self.ec2.get_all_security_groups([security_group_name])
-        if len(security_groups) == 0:
-            return
+        #if len(security_groups) == 0:
+        #    return
 
         security_group_id = security_groups[0].id
 
         tags = self.ec2.get_all_tags(filters={"resource-id": security_group_id, "key": "clusterui-instance"})
         if len(tags) == 0 or steal_ownership:
-            self.ec2.create_tags([security_group_id], {"clusterui-instance", self.clusterui_identifier})
+            self.ec2.create_tags([security_group_id], {"clusterui-instance": self.clusterui_identifier})
         else:
             assert len(tags) == 1
             tag = tags[0]
@@ -142,11 +143,13 @@ class ClusterManager(object):
     def _execute_poll(self):
         self.state = CM_UPDATING
         if not self.monitor_parameters.is_paused:
+            print "updating"
             self._verify_ownership_of_cluster()
 
             args = self.monitor_parameters.generate_args()
             self._run_starcluster_cmd(["scalecluster", self.cluster_name] + args, "update-completed")
         else:
+            print "is paused"
             self.tell("update-completed")
 
     def on_receive(self, message):

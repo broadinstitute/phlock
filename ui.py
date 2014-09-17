@@ -391,7 +391,7 @@ def edit_monitor_request():
 @secured
 def set_monitor_parameters():
     values = request.values
-
+    monitor_parameters.is_paused = "is_paused" in values
     monitor_parameters.spot_bid=float(values['spot_bid'])
     monitor_parameters.max_to_add=int(values['max_to_add'])
     monitor_parameters.time_per_job=int(values['time_per_job'])
