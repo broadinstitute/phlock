@@ -14,6 +14,7 @@ class Parameters:
         self.time_per_job=30 * 60
         self.time_to_add_servers_fixed=60
         self.time_to_add_servers_per_server=30
+        self.max_instances=10
         self.instance_type="m3.medium"
         self.domain="cluster-deadmans-switch"
         self.dryrun=False
@@ -31,7 +32,8 @@ class Parameters:
                 "--instance_type", str(self.instance_type),
                 "--domain", self.domain,
                 "--jobs_per_server", str(self.jobs_per_server),
-                "--logfile", self.log_file
+                "--logfile", self.log_file,
+                "--max_instances", str(self.max_instances)
                 ]
 
 
