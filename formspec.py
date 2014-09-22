@@ -33,12 +33,12 @@ class Form:
 
 ATLANTIS_FORM = Form("atlantis.flock",
   Text("repo", default="ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", width=6),
-  Text("branch", default="refs/heads/flock3"),
-  Enumeration("targetDataset", ["55k", "98k"], False),
+  Text("branch", default="refs/heads/master"),
+  Enumeration("targetDataset", ["ach2.12", "55k", "98k"], False),
   Enumeration("targetDataType", ["gene solutions", "seed solutions"], False),
   Enumeration("celllineSubset", ["all", "solid"], False),
   Enumeration("predictiveFeatures", ["GE", "CN", "MUT", "SI", "miRNA", "high conf GS"], True),
-  Enumeration("predictiveFeatureSubset", ["single", "top100", "all"], False)
+  Enumeration("predictiveFeatureSubset", ["single", "all"], False)
 )
 
 GENERIC_FORM = Form("generic.flock",
