@@ -26,7 +26,7 @@ invoke:|
      {% else %}
           invalid targetDataset
      {% endif %}
-  {% elif targetDataset == "Ach2.12" %}
+  {% elif targetDataset == "ach2.12" %}
      {% if targetDataType == "gene solutions" %}
        targetPrefix <- "GS"
        targetMat <- t(load.matrix.from.taiga("achilles-2-12-demeter-gene-solutions"))
@@ -34,7 +34,7 @@ invoke:|
        targetPrefix <- "SS"
        targetMat <- t(load.matrix.from.taiga("achilles-2-12-demeter-seed-solutions"))
      {% else %}
-          invalid targetDataset
+          invalid targetDataType
      {% endif %}
   {% else %}
           invalid targetDataset
