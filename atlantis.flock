@@ -19,20 +19,20 @@ invoke:|
   {% if targetDataset == "55k" %}
      {% if targetDataType == "gene solutions" %}
        targetPrefix <- "GS"
-       targetMat <- t(load.matrix.from.taiga("achilles-v2-4-3-demeter-cleaned-gene-solution"))
+       targetMat <- t(load.matrix.from.taiga(name="achilles-v2-4-3-demeter-cleaned-gene-solution"))
      {% elif targetDataType == "seed solutions" %}
        targetPrefix <- "SS"
-       targetMat <- t(load.matrix.from.taiga("achilles-v2-4-3-demeter-cleaned-seed-solution"))
+       targetMat <- t(load.matrix.from.taiga(name="achilles-v2-4-3-demeter-cleaned-seed-solution"))
      {% else %}
           invalid targetDataset
      {% endif %}
   {% elif targetDataset == "ach2.12" %}
      {% if targetDataType == "gene solutions" %}
        targetPrefix <- "GS"
-       targetMat <- t(load.matrix.from.taiga("achilles-2-12-demeter-gene-solutions"))
+       targetMat <- t(load.matrix.from.taiga(name="achilles-2-12-demeter-gene-solutions"))
      {% elif targetDataType == "seed solutions" %}
        targetPrefix <- "SS"
-       targetMat <- t(load.matrix.from.taiga("achilles-2-12-demeter-seed-solutions"))
+       targetMat <- t(load.matrix.from.taiga(name="achilles-2-12-demeter-seed-solutions"))
      {% else %}
           invalid targetDataType
      {% endif %}
