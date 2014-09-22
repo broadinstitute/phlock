@@ -78,11 +78,19 @@ def find_master(ec2, cluster_name):
         return matches[0]
     raise Exception("Too many instances named master: %s" % (matches,))
 
-
+def get_spot_prices(ec2):
+    hourly_rate = 0.0
+    requests = ec2.get_all_spot_instance_requests(filters={"state":"active"})
+    for spot_request in requests:
+        if spot_request.state == "active":
+            print "spot code ", spot_request.id, spot_request.status.code
+            hourly_rate += spot_request.price
+    return hourly_rate
 
 def get_instance_counts(ec2):
     instances = ec2.get_only_instances()
     instances = filter_inactive_instances(instances)
+
     counts = collections.defaultdict(lambda: 0)
     for i in instances:
         counts[i.instance_type] += 1
@@ -159,6 +167,7 @@ def logout():
 @app.route("/")
 def index():
     ec2 = get_ec2_connection()
+    hourly_rate = get_spot_prices(ec2)
     instances = get_instance_counts(ec2)
     instance_table = []
     total = 0
@@ -174,7 +183,7 @@ def index():
     state = cluster_manager.get_state()
     print "state=%s" % state
 
-    return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, state=state)
+    return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, state=state, hourly_rate=hourly_rate)
 
 
 @app.route("/kill-terminal/<id>")
