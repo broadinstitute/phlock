@@ -24,17 +24,28 @@ invoke:|
        targetPrefix <- "SS"
        targetMat <- t(load.matrix.from.taiga("achilles-v2-4-3-demeter-cleaned-seed-solution"))
      {% else %}
-          stopifnot(FALSE);
+          invalid targetDataset
+     {% endif %}
+  {% elif targetDataset == "Ach2.12" %}
+     {% if targetDataType == "gene solutions" %}
+       targetPrefix <- "GS"
+       targetMat <- t(load.matrix.from.taiga("achilles-2-12-demeter-gene-solutions"))
+     {% elif targetDataType == "seed solutions" %}
+       targetPrefix <- "SS"
+       targetMat <- t(load.matrix.from.taiga("achilles-2-12-demeter-seed-solutions"))
+     {% else %}
+          invalid targetDataset
      {% endif %}
   {% else %}
-     stopifnot(FALSE);
+          invalid targetDataset
   {% endif %}
 
 
-  si.taiga.id <- "35105a4d-c0fb-496f-9318-06bf41c2c4ee"
   {% if celllineSubset == "solid" %}
-    SI <- load.matrix.from.taiga(si.taiga.id)
-    solid.lines <- rownames(SI)[SI[,"isHemato_is_no"] == 1]
+    SI <- load.matrix.from.taiga("80833526-448b-4b9f-a661-a9407a67e778")
+    all.lines <- rownames(SI)
+    solid.lines <- all.lines[SI[,"solidorhaemo_is_solid"] == 1]
+    stopifnot(all(rownames(targetMat)) %in% all.lines)
     lines.to.keep <- intersect(rownames(targetMat), solid.lines)
     stopifnot(length(lines.to.keep) > 0)
     targetMat <- targetMat[lines.to.keep,,drop=F]
@@ -43,44 +54,40 @@ invoke:|
   pred.sources <- list()
   {% for feature in predictiveFeatures %}
     {% if feature == "GE" %}
-        m <- load.matrix.from.taiga(name="ccle-rnaseq-gene-expression-rpkm-for-analysis-in-manuscripts-protein-coding-genes-only", version=1)
+        m <- load.matrix.from.taiga(name="ccle-rnaseq-gene-expression-rpkm-for-analysis-in-manuscripts-protein-coding-genes-only", version=2)
 
         pred.def <- list(dat=m, prefix="Exp", vartype="Exp", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
     {% elif feature == "CN" %}
-        m <- load.matrix.from.taiga(name="ccle-copy-number-variants", version=1)
+        m <- load.matrix.from.taiga(name="ccle-cn-bygene-achilles-v2-4-v2-11", version=1)
         pred.def <- list(dat=m, prefix="{{feature}}", vartype="{{feature}}", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
     {% elif feature == "MUT" %}
 
-        m <- load.matrix.from.taiga(name="ccle-rnaseq-mutation-hotspot", version=1)
-        pred.def <- list(dat=m, prefix="MUThot", vartype="MUT", must.have.cellline=T)
+        m <- load.matrix.from.taiga(name="ccle-rna-mutations-hotspots", version=1)
+        pred.def <- list(dat=m, prefix="RMUThot", vartype="MUT", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
-        m <- load.matrix.from.taiga(name="ccle-rnaseq-mutation-bad", version=2)
-        pred.def <- list(dat=m, prefix="MUTdmg", vartype="MUT", must.have.cellline=T)
+        m <- load.matrix.from.taiga(name="ccle-rna-mutations-damaging", version=1)
+        pred.def <- list(dat=m, prefix="RMUTdmg", vartype="MUT", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
-        m <- load.matrix.from.taiga(name="ccle-rnaseq-mutation-missense", version=2)
-        pred.def <- list(dat=m, prefix="MUTmis", vartype="MUT", must.have.cellline=T)
-        pred.sources[[length(pred.sources)+1]] <- pred.def
-    {% elif feature == "SI" %}
-
-        m <- load.matrix.from.taiga(si.taiga.id)
-        pred.def <- list(dat=m, prefix="SI", vartype="SI", must.have.cellline=T)
+        m <- load.matrix.from.taiga(name="ccle-rna-mutations-missense", version=1)
+        pred.def <- list(dat=m, prefix="RMUTmis", vartype="MUT", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
-    {% elif feature == "miRNA" %}
-
-        m <- load.matrix.from.taiga(name="ccle-nanostring-mirna-expression", version=1)
-        pred.def <- list(dat=m, prefix="mirE", vartype="Exp", must.have.cellline=T)
+        m <- load.matrix.from.taiga(name="ccle-dna-mutations-missense", version=1)
+        pred.def <- list(dat=m, prefix="DMUTmis", vartype="MUT", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
-    {% elif feature == "high conf GS" %}
-        m <- t(load.matrix.from.taiga(name="achilles-2-4-3-demeter-high-confidence-gene-solutions", version=1))
-        pred.def <- list(dat=m, prefix="GS", vartype="Exp", must.have.cellline=T)
+        m <- load.matrix.from.taiga(name="ccle-dna-mutations-hotspots", version=1)
+        pred.def <- list(dat=m, prefix="DMUThot", vartype="MUT", must.have.cellline=T)
+        pred.sources[[length(pred.sources)+1]] <- pred.def
+
+        m <- load.matrix.from.taiga(name="ccle-dna-mutations-damaging", version=1)
+        pred.def <- list(dat=m, prefix="DMUTdmg", vartype="MUT", must.have.cellline=T)
         pred.sources[[length(pred.sources)+1]] <- pred.def
 
     {% else %}
