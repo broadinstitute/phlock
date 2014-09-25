@@ -83,10 +83,21 @@
         </div>
 
         <div class="form-group">
+            <label for="max_instances" class="col-sm-3 control-label">max_instances</label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="max_instances" name="max_instances"
+                       value="{{ param.max_instances }}">
+            </div>
+        </div>
+
+        <div class="form-group">
             <div class="col-sm-offset-3 col-sm-10">
                 <button name="submit" type="submit" class="btn btn-default">Update</button>
             </div>
         </div>
+
+
 
     </form>
 
