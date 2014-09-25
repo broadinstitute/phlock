@@ -8,6 +8,7 @@ import tempfile
 import re
 import term
 import socket
+import math
 
 from flask.ext.openid import OpenID
 
@@ -383,7 +384,7 @@ def submit_job_req():
     else:
         submit_job(flock_config, params)
 
-def submit_job(flock_config, params):
+def submit_job(flock_config, params, job_index=0, batch_size=1):
     assert params["repo"] != None
     assert params["branch"] != None
 
@@ -402,6 +403,10 @@ def submit_job(flock_config, params):
     sorted_keys.sort()
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    if batch_size > 1:
+        job_id_format = "%%s-%%0%dd" % math.ceil(math.log(batch_size)/math.log(10))
+        timestamp = job_id_format % (timestamp, job_index)
 
     title = "Run %s: %s" % (timestamp, ", ".join([params[k] for k in sorted_keys if not (k in ["repo", "branch"]) ]))
 
@@ -425,10 +430,13 @@ def submit_batch_job():
 
     json_and_flock = batch_submit.make_flock_configs(config_defs, template_str)
 
+    job_index = 0
     for params, flock in json_and_flock:
         params["repo"] = request.values["repo"]
         params["branch"] = request.values["branch"]
-        submit_job(flock, params)
+        submit_job(flock, params, job_index=job_index, batch_size=len(json_and_flock))
+        
+        job_index += 1
 
     return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")
 
