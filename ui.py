@@ -6,7 +6,6 @@ import formspec
 import tempfile
 import re
 import term
-import json
 import socket
 
 from flask.ext.openid import OpenID
@@ -411,10 +410,10 @@ def submit_batch_job():
 
     json_and_flock = batch_submit.make_flock_configs(config_defs, template_str)
 
-    for json, flock in json_and_flock:
-        json["repo"] = request.values["repo"]
-        json["branch"] = request.values["branch"]
-        submit_job(flock, json)
+    for params, flock in json_and_flock:
+        params["repo"] = request.values["repo"]
+        params["branch"] = request.values["branch"]
+        submit_job(flock, params)
 
     return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")
 
