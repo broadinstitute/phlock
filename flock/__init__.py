@@ -10,13 +10,18 @@ import time
 import logging
 import shutil
 import json
+import base64
+import hashlib
+import xml.etree.ElementTree as ETree
 
 FLOCK_VERSION="1.0"
 
 # the various status codes for tasks
 CREATED = "Created"
 SUBMITTED = "Submitted"
+RUNNING = "Running"
 FINISHED = "Finished"
+QUEUED_UNKNOWN = "Queued, with unknown status"
 FAILED = "Failed"
 WAITING = "Waiting for other tasks to finish"
 UNKNOWN = "Missing"
@@ -95,7 +100,7 @@ class TaskStatusCache:
     for task in tasks:
       counts[task.status] += 1
     self.record_finished_count(time.time(), counts[FINISHED] + counts[FAILED] + counts[UNKNOWN])
-    return self.estimate_completion_rate(counts[SUBMITTED] + counts[WAITING])
+    return self.estimate_completion_rate(counts[SUBMITTED] + counts[WAITING] + counts[RUNNING] + counts[QUEUED_UNKNOWN])
   
   def record_finished_count(self, timestamp, finished_count):
     self.history.append( (timestamp, finished_count) )
@@ -134,15 +139,17 @@ class TaskStatusCache:
       self.finished_successfully.add(task_dir)
     return task_dir in self.finished_successfully
     
-  def get_status(self, run_id, external_ids, active_external_ids, task_dir, job_deps):
+  def get_status(self, run_id, external_ids, queued_job_states, task_dir, job_deps):
+    assert type(queued_job_states) == dict
+    
     if self._finished_successfully(run_id, task_dir):
       return FINISHED
 
     if task_dir in external_ids:
       lsf_id = external_ids[task_dir]
-      if lsf_id in active_external_ids:
+      if lsf_id in queued_job_states:
         self.update_failure(task_dir, True)
-        return SUBMITTED
+        return queued_job_states[lsf_id]
       else:
         self.update_failure(task_dir, False)
         if self.definitely_failed(task_dir):
@@ -152,7 +159,7 @@ class TaskStatusCache:
     else:
       all_deps_met = True
       for dep in job_deps[task_dir]:
-        if self.get_status(run_id, external_ids, active_external_ids, dep, job_deps) != FINISHED:
+        if self.get_status(run_id, external_ids, queued_job_states, dep, job_deps) != FINISHED:
           all_deps_met = False
       if all_deps_met:
         return CREATED
@@ -160,9 +167,9 @@ class TaskStatusCache:
         return WAITING
 
 @timeit
-def find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, cache):
+def find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, cache):
   def get_status(task_dir):
-    return cache.get_status(run_id, external_ids, active_external_ids, task_dir, job_deps)
+    return cache.get_status(run_id, external_ids, queued_job_states, task_dir, job_deps)
   
   def get_external_id(task_dir):
     return external_ids[task_dir] if task_dir in external_ids else None
@@ -206,7 +213,7 @@ class LocalQueue(AbstractQueue):
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
 
-  def submit(self, task, is_scatter):
+  def submit(self, run_id, task, is_scatter):
     d = task.full_path
     cmd = "bash %s/task.sh > %s/stdout.txt 2> %s/stderr.txt" % (d,d,d)
     if cmd in self._ran:
@@ -242,7 +249,7 @@ class LSFQueue(AbstractQueue):
     #  No unfinished job found
     lines = stdout.split("\n")
     job_pattern = re.compile("\\s*(\\d+)\\s+\\S+\\s+(\\S+)\\s+.*")
-    active_jobs = set()
+    active_jobs = {}
     for line in lines[1:]:
       if line == '':
         continue
@@ -252,18 +259,24 @@ class LSFQueue(AbstractQueue):
       else:
         job_id = m.group(1)
         job_state = m.group(2)
-        active_jobs.add(job_id)
+        if job_state == "PEND":
+          s = SUBMITTED
+        elif job_state == "RUN":
+          s = RUNNING
+        else:
+          s = QUEUED_UNKNOWN
+        active_jobs[job_id] = s
     return active_jobs
 
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
-    active_external_ids = self.get_active_lsf_jobs()
+    queued_job_states = self.get_active_lsf_jobs()
     external_ids = read_external_ids(run_id, task_dirs, "LSF:")
-    tasks = find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
     
-  def submit(self, task, is_scatter):
+  def submit(self, run_id, task, is_scatter):
     d = task.full_path
     cmd = ["bsub", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d]
     if is_scatter:
@@ -297,40 +310,42 @@ class SGEQueue(AbstractQueue):
     self.scatter_qsub_options = split_options(scatter_qsub_options)
     
   def get_active_sge_jobs(self):
-    handle = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
+    handle = subprocess.Popen(["qstat", "-xml"], stdout=subprocess.PIPE)
     stdout, stderr = handle.communicate()
 
-    #Output looks like:
-    # job-ID  prior   name       user         state submit/start at     queue                          slots ja-task-ID
-    # -----------------------------------------------------------------------------------------------------------------
-    #      4 0.00000 task.sh    ubuntu       qw    05/22/2014 21:49:15                                    1
-    lines = stdout.split("\n")
-    job_pattern = re.compile("\\s*(\\d+)\\s+.*")
-    active_jobs = set()
-    for line in lines[2:]:
-      if line == '':
-        continue
-      m = job_pattern.match(line)
-      if m == None:
-        log.warning("Could not parse line from bjobs: %s",repr(line))
+    doc = ETree.fromstring(stdout)
+    job_list = doc.findall(".//job_list")
+
+    active_jobs = {}
+    for job in job_list:
+      job_id = job.find("JB_job_number").text
+
+      state = job.attrib['state']
+      if state == "running":
+        active_jobs[job_id] = RUNNING
+      elif state == "pending":
+        active_jobs[job_id] = SUBMITTED
       else:
-        job_id = m.group(1)
-        active_jobs.add(job_id)
+        active_jobs[job_id] = QUEUED_UNKNOWN
     return active_jobs
 
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
-    active_external_ids = self.get_active_sge_jobs()
+    queued_job_states = self.get_active_sge_jobs()
     external_ids = read_external_ids(run_id, task_dirs, "SGE:")
-    tasks = find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
+
     
-  def submit(self, task, is_scatter):
+  def submit(self, run_id, task, is_scatter):
     d = task.full_path
 
+    # make a hash of the run directory that will likely be unique so that we can distinguish which job is which
+    safe_run_id = base64.urlsafe_b64encode(hashlib.md5(run_id).digest())[0:10]
+    
     task_path_comps = d.split("/")
-    job_name = "t-%s" % (task_path_comps[-1])
+    job_name = "t-%s-%s" % (task_path_comps[-1], safe_run_id)
 
     cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d] 
     cmd.extend(self.qsub_options)
@@ -379,7 +394,7 @@ class LocalBgQueue(AbstractQueue):
     # 8812 
     lines = stdout.split("\n")
     job_pattern = re.compile("\\s*(\\d+)\\s*")
-    active_jobs = set()
+    active_jobs = {}
     for line in lines[1:]:
       if line == '':
         continue
@@ -388,18 +403,18 @@ class LocalBgQueue(AbstractQueue):
         log.warning("Could not parse line from ps: %s", repr(line))
       else:
         pid = m.group(1)
-        active_jobs.add(pid)
+        active_jobs[pid] = RUNNING
     return active_jobs
 
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
-    active_external_ids = self.get_active_procs()
+    queued_job_states = self.get_active_procs()
     external_ids = read_external_ids(run_id, task_dirs, "PID:")
-    tasks = find_tasks(run_id, external_ids, active_external_ids, task_dirs, job_deps, self.cache)
+    tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
     
-  def submit(self, task, is_scatter):
+  def submit(self, run, task, is_scatter):
     d = task.full_path
     stdout = open("%s/stdout.txt" % d, "w")
     stderr = open("%s/stderr.txt" % d, "w")
@@ -548,7 +563,7 @@ class Flock(object):
     rows =[["Task", "ID", "Status"]]
     for task in tasks:
       rows.append((task.task_dir, task.external_id, task.status))
-    log.info("Checking on tasks")
+    log.info("Checking on %s" % run_id)
     self.print_task_table(rows, estimate)
     return tasks
 
@@ -570,7 +585,7 @@ class Flock(object):
       self.write_json_summary(tasks, run_id)
 
       for task in tasks:
-        if task.status in [CREATED, SUBMITTED, UNKNOWN]:
+        if task.status in [CREATED, SUBMITTED, UNKNOWN, QUEUED_UNKNOWN]:
           is_complete = False
       
       created_tasks = [t for t in tasks if t.status == CREATED]
@@ -578,7 +593,7 @@ class Flock(object):
         created_tasks = created_tasks[:maxsubmit]
         
       for task in created_tasks:
-        self.job_queue.submit(task, "scatter" in task.task_dir)
+        self.job_queue.submit(run_id, task, "scatter" in task.task_dir)
       
       submitted_count += len(created_tasks)
       if len(created_tasks) == 0:
@@ -596,9 +611,9 @@ class Flock(object):
 
   def kill(self, run_id):
     tasks = self.job_queue.find_tasks(run_id)
-    to_kill = [ task for task in tasks if task.status == SUBMITTED ]
+    to_kill = [ task for task in tasks if task.status in [SUBMITTED, QUEUED_UNKNOWN, RUNNING] ]
     self.job_queue.kill(to_kill)
-    log.info("%d jobs with status 'Submitted' killed", len(to_kill))
+    log.info("%d active jobs killed", len(to_kill))
 
   def retry(self, run_id, wait):
     tasks = self.job_queue.find_tasks(run_id)
@@ -657,6 +672,10 @@ def load_config(filenames):
   
   if not ( "scatter_qsub_options" in config ):
     config["scatter_qsub_options"] = config["qsub_options"]
+  
+  assert "base_run_dir" in config
+  assert "executor" in config
+  assert "invoke" in config
 
   return Config(**config)
 

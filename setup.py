@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name='flock',
-    version='1.1',
+    version='1.2',
     packages=['flock',],
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     author="Philip Montgomer",
