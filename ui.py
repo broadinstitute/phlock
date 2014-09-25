@@ -337,7 +337,7 @@ def poll_job():
 
 @app.route("/kill-job")
 @secured
-def poll_job():
+def kill_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
     return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
