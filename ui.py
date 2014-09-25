@@ -24,6 +24,8 @@ import argparse
 import logging
 import prices
 from instance_types import cpus_per_instance, instance_sizes
+import batch_submit
+import json
 
 oid = OpenID(None, "/tmp/clusterui-openid")
 terminal_manager = term.TerminalManager()
@@ -275,7 +277,7 @@ def list_jobs():
     cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                         "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
                         "-i", key_location, 
-                        "ubuntu@" + master.dns_name, TARGET_ROOT + "/get_runs.py " + TARGET_ROOT]
+                        "ubuntu@" + master.dns_name, "/tmp/cluster_scripts/get_runs.py " + TARGET_ROOT]
 
     p = subprocess.Popen(cmd,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
@@ -372,21 +374,49 @@ def submit_job():
         response.headers["Content-Disposition"] = "attachment; filename=config.flock"
         return response
     else:
-        ec2 = get_ec2_connection()
-        master, key_location = get_master_info(ec2)
+        submit_job(flock_config, params)
 
-        t = tempfile.NamedTemporaryFile(delete=False)
-        t.write(flock_config)
-        t.close()
+def submit_job(flock_config, params):
+    assert params["repo"] != None
+    assert params["branch"] != None
 
-        t2 = tempfile.NamedTemporaryFile(delete=False)
-        t2.write(json.dumps(params))
-        t2.close()
+    ec2 = get_ec2_connection()
+    master, key_location = get_master_info(ec2)
 
-        return run_command(
-            [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
-             TARGET_ROOT, t2.name])
+    t = tempfile.NamedTemporaryFile(delete=False)
+    t.write(flock_config)
+    t.close()
 
+    t2 = tempfile.NamedTemporaryFile(delete=False)
+    t2.write(json.dumps(params))
+    t2.close()
+
+    return run_command(
+        [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
+         TARGET_ROOT, t2.name])
+
+
+@app.route("/submit-batch-job-form")
+@secured
+def submit_batch_job_form():
+    return flask.render_template("submit-batch-job-form.html", default_repo="ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", default_branch="refs/heads/master")
+
+@app.route("/submit-batch-job", methods=["POST"])
+@secured
+def submit_batch_job():
+    template_file = request.files["template"]
+    template_str = template_file.read()
+
+    config_defs = json.loads(request.values['config_defs'])
+
+    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str)
+
+    for json, flock in json_and_flock:
+        json["repo"] = request.values["repo"]
+        json["branch"] = request.values["branch"]
+        submit_job(flock, json)
+
+    return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")
 
 monitor_parameters = cluster_monitor.Parameters()
 cluster_terminal = None
@@ -413,6 +443,7 @@ def set_monitor_parameters():
     monitor_parameters.instance_type=values['instance_type']
     monitor_parameters.domain=values['domain']
     monitor_parameters.jobs_per_server=int(values['jobs_per_server'])
+    monitor_parameters.max_instances=int(values['max_instances'])
 
     return flask.redirect("/")
 
