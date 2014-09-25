@@ -47,8 +47,7 @@ def deploy_code_from_git(repo, sha, branch):
 
     return sha_code_dir
 
-def install_config(target_root, sha_code_dir, config_temp_file):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+def install_config(target_root, sha_code_dir, config_temp_file, timestamp):
     target_dir = target_root+"/"+timestamp
 
     # create the directory for this run
@@ -87,7 +86,7 @@ class EchoAndCapture(object):
 
 import json
 
-def deploy(host, key_filename, repo, branch, config_file, target_root, json_params):
+def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp):
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
             sha = get_sha(repo, branch)
@@ -99,7 +98,7 @@ def deploy(host, key_filename, repo, branch, config_file, target_root, json_para
                 fd.write(json.dumps(params))
 
         with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
-            working_dir, target_dir, command = install_config(target_root, sha_code_dir, config_file)
+            working_dir, target_dir, command = install_config(target_root, sha_code_dir, config_file, timestamp)
             put(json_params, target_dir+"/config.json")
             with cd(working_dir):
                 install_wrapper_script(working_dir, target_dir)

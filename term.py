@@ -108,10 +108,13 @@ class Terminal(object):
                 self.proc.kill()
 
 
-def create_term_for_command(id, args):
+def create_term_for_command(id, args, title=None):
     print "executing ", args
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
-    t = Terminal(id, " ".join(args))
+    command_line = " ".join(args)
+    if title == None:
+        title = command_line
+    t = Terminal(id, title=title, command_line=command_line)
     t.attach(p.stdout, lambda: t.run_until_terminate(p), p)
 
     return t
@@ -159,8 +162,8 @@ class TerminalManager:
         self.terminals[id] = terminal
         return terminal
 
-    def start_term(self, args):
+    def start_term(self, args, title):
         id = uuid.uuid4().hex
-        terminal = create_term_for_command(id, args)
+        terminal = create_term_for_command(id, args, title=title)
         self.terminals[id] = terminal
         return terminal

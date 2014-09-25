@@ -1,3 +1,4 @@
+import datetime
 import flask
 from flask import request
 import subprocess
@@ -99,8 +100,8 @@ def get_instance_counts(ec2):
     return counts
 
 
-def run_command(args):
-    terminal = terminal_manager.start_term(args)
+def run_command(args, title=None):
+    terminal = terminal_manager.start_term(args, title=title)
     return flask.redirect("/terminal/" + terminal.id)
 
 
@@ -334,6 +335,13 @@ def poll_job():
     return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
                                 "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh poll"])
 
+@app.route("/kill-job")
+@secured
+def poll_job():
+    job_name = request.values["job"]
+    assert not ("/" in job_name)
+    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
+                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh kill"])
 
 
 
@@ -359,7 +367,7 @@ def submit_job_form():
 
 @app.route("/submit-job", methods=["POST"])
 @secured
-def submit_job():
+def submit_job_req():
     template = request.values['template']
     matching_forms = [f for f in [formspec.ATLANTIS_FORM, formspec.GENERIC_FORM] if f.template == template]
     assert len(matching_forms) == 1
@@ -390,9 +398,16 @@ def submit_job(flock_config, params):
     t2.write(json.dumps(params))
     t2.close()
 
+    sorted_keys = params.keys()
+    sorted_keys.sort()
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    title = "Run %s: %s" % (timestamp, ", ".join([params[k] for k in sorted_keys if not (k in ["repo", "branch"]) ]))
+
     return run_command(
         [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
-         TARGET_ROOT, t2.name])
+         TARGET_ROOT, t2.name, timestamp], title=title)
 
 
 @app.route("/submit-batch-job-form")
