@@ -379,8 +379,8 @@ class SGEQueue(AbstractQueue):
     for batch in divide_into_batches(tasks, 100):
       cmd = ["qdel"]
       cmd.extend( [task.external_id for task in batch ] )
-    handle = subprocess.Popen(cmd)
-    handle.communicate()
+      handle = subprocess.Popen(cmd)
+      handle.communicate()
 
 def divide_into_batches(elements, size):
   for i in range(0,len(elements), size):
