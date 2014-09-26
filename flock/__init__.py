@@ -567,6 +567,12 @@ class Flock(object):
     self.print_task_table(rows, estimate)
     return tasks
 
+  def list_failures(self, run_id):
+    tasks = self.job_queue.find_tasks(run_id)
+    for task in tasks:
+      if task.status in [FAILED, UNKNOWN]:
+        print task.full_path
+
   def write_json_summary(self,tasks, run_id):
     jobs_per_status = collections.defaultdict(lambda:0)
     for task in tasks:
@@ -745,6 +751,8 @@ def flock_cmd_line(cmd_line_args):
     f.poll(run_id, not args.nowait)
   elif command == "retry":
     f.retry(run_id, not args.nowait)
+  elif command == "failed":
+    f.list_failures(run_id)
   else:
     raise Exception("Unknown command: %s" % command)
 
