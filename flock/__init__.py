@@ -199,6 +199,15 @@ class AbstractQueue(object):
     
   def get_last_estimate(self):
     return self.last_estimate
+  
+  def clean_task_dir(self, task):
+    for fn in [ "%s/stdout.txt" % task.full_path, "%s/stderr.txt" % task.full_path ]:
+      if os.path.exists(fn):
+        for i in xrange(20):
+          dest = "%s.%d" % (fn, i)
+          if not os.path.exists(dest):
+            break
+        os.rename(fn, dest)
 
 class LocalQueue(AbstractQueue):
   def __init__(self):
@@ -215,7 +224,7 @@ class LocalQueue(AbstractQueue):
 
   def submit(self, run_id, task, is_scatter):
     d = task.full_path
-    cmd = "bash %s/task.sh > %s/stdout.txt 2> %s/stderr.txt" % (d,d,d)
+    cmd = "bash %s/task.sh >> %s/stdout.txt 2>> %s/stderr.txt" % (d,d,d)
     if cmd in self._ran:
       raise Exception("Already ran %s once" % cmd)
     self.system(cmd, ignore_retcode=True)
@@ -416,8 +425,8 @@ class LocalBgQueue(AbstractQueue):
     
   def submit(self, run, task, is_scatter):
     d = task.full_path
-    stdout = open("%s/stdout.txt" % d, "w")
-    stderr = open("%s/stderr.txt" % d, "w")
+    stdout = open("%s/stdout.txt" % d, "a")
+    stderr = open("%s/stderr.txt" % d, "a")
     cmd = ["bash", "%s/task.sh" % d]
     log.info("executing: %s", cmd)
     handle = subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
@@ -599,6 +608,7 @@ class Flock(object):
         created_tasks = created_tasks[:maxsubmit]
         
       for task in created_tasks:
+        self.job_queue.clean_task_dir(task)
         self.job_queue.submit(run_id, task, "scatter" in task.task_dir)
       
       submitted_count += len(created_tasks)
