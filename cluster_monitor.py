@@ -58,6 +58,7 @@ class ClusterManager(object):
         self.clusterui_identifier = clusterui_identifier
         self.ec2 = ec2
         self.cluster_template = cluster_template
+        self.first_update = True
 
     def _send_wakeup(self):
         self.tell("update")
@@ -75,7 +76,7 @@ class ClusterManager(object):
             assert "security group" in output
             cluster_is_running = True
             self.state = CM_STARTING
-            self._verify_ownership_of_cluster(steal_ownership=True)
+            self.first_update = True
 
         self.thread = threading.Thread(target=self.run)
         self.thread.daemon = True
@@ -142,13 +143,16 @@ class ClusterManager(object):
         else:
             assert len(tags) == 1
             tag = tags[0]
-            assert tag.value == self.clusterui_identifier
+            if tag.value != self.clusterui_identifier:
+                self.state = "broken-lost-ownership"
+                raise Exception("Expected ownership tag to be %s but was %s" % (repr(self.clusterui_identifier, tag.value)))
 
     def _execute_poll(self):
         self.state = CM_UPDATING
         if not self.monitor_parameters.is_paused:
             print "updating"
-            self._verify_ownership_of_cluster()
+            self._verify_ownership_of_cluster(steal_ownership=self.first_update)
+            self.first_update = False
 
             args = self.monitor_parameters.generate_args()
             self._run_starcluster_cmd(["scalecluster", self.cluster_name] + args, "update-completed")
