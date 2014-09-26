@@ -269,10 +269,22 @@ def get_master_info(ec2):
 
     return master, config['KEY_LOCATION']
 
-
+def create_job_tag_set(job):
+    tags = set()
+    for k,v in job.items():
+        if not ( k in ["job_name", "job_dir", "status"] ):
+            tags.add("%s=%s" % (k, repr(v)))
+    return tags
 
 @app.route("/list-jobs")
 def list_jobs():
+    filter_tag = None
+
+    if "tag" in request.values:
+        filter_tag = request.values['tag']
+        if filter_tag == "":
+            filter_tag = None
+
     master, key_location = get_master_info(get_ec2_connection())
 
     cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
@@ -288,9 +300,46 @@ def list_jobs():
     except ValueError:
         return flask.render_string("Could not parse:\n"+stdout+"\n"+stderr);
 
-    return flask.render_template("list-jobs.html", jobs=jobs,
-                                 column_names=["status", "celllineSubset", "targetDataset", "predictiveFeatureSubset",
-                                               "targetDataType", "predictiveFeatures"])
+    tag_universe = set()
+    filtered_jobs = []
+    for job in jobs:
+        job_tag_set = create_job_tag_set(job)
+        if filter_tag is None or filter_tag in job_tag_set:
+            filtered_jobs.append(job)
+
+        tag_universe.update(job_tag_set)
+
+    column_names_set = collections.defaultdict(lambda: set())
+    for job in filtered_jobs:
+        for k, v in job.items():
+            column_names_set[k].add(str(v))
+
+    column_names = []
+    fixed_values = []
+    for k, values in column_names_set.items():
+        if ( k in ["job_name", "job_dir", "status"] ):
+            continue
+
+        if len(values) > 1:
+            column_names.append(k)
+        else:
+            fixed_values.append( (k, list(values)[0]) )
+
+    fixed_values.sort()
+    column_names.sort()
+
+    tag_universe = list(tag_universe)
+    tag_universe.sort()
+
+    # convert status into a map if possible
+    for job in filtered_jobs:
+        try:
+            job['parsed_status'] = json.loads(job['status'])
+        except ValueError:
+            pass
+
+    return flask.render_template("list-jobs.html", jobs=filtered_jobs,
+                                 column_names=column_names, tags=tag_universe, fixed_values=fixed_values )
 
 job_pattern = re.compile("\\d+-\\d+")
 
@@ -384,7 +433,7 @@ def submit_job_req():
     else:
         submit_job(flock_config, params)
 
-def submit_job(flock_config, params, job_index=0, batch_size=1):
+def submit_job(flock_config, params, timestamp=None):
     assert params["repo"] != None
     assert params["branch"] != None
 
@@ -402,11 +451,8 @@ def submit_job(flock_config, params, job_index=0, batch_size=1):
     sorted_keys = params.keys()
     sorted_keys.sort()
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-
-    if batch_size > 1:
-        job_id_format = "%%s-%%0%dd" % math.ceil(math.log(batch_size)/math.log(10))
-        timestamp = job_id_format % (timestamp, job_index)
+    if timestamp == None:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     title = "Run %s: %s" % (timestamp, ", ".join([params[k] for k in sorted_keys if not (k in ["repo", "branch"]) ]))
 
@@ -431,11 +477,16 @@ def submit_batch_job():
     json_and_flock = batch_submit.make_flock_configs(config_defs, template_str)
 
     job_index = 0
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    job_id_format = "%%s-%%0%dd" % math.ceil(math.log(len(json_and_flock))/math.log(10))
+
     for params, flock in json_and_flock:
+
         params["repo"] = request.values["repo"]
         params["branch"] = request.values["branch"]
-        submit_job(flock, params, job_index=job_index, batch_size=len(json_and_flock))
-        
+        submit_job(flock, params, timestamp=job_id_format % (timestamp, job_index))
+
         job_index += 1
 
     return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")

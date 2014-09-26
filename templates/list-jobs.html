@@ -1,8 +1,111 @@
 {% extends "base.html" %}
+
 {% block title %}Home{% endblock %}
+
+{% block head %}
+  {{ super() }}
+
+<!--Load the AJAX API-->
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript">
+
+      // Load the Visualization API and the piechart package.
+      google.load('visualization', '1.0', {'packages':['corechart']});
+
+      // Set a callback to run when the Google Visualization API is loaded.
+      google.setOnLoadCallback(drawChart);
+
+      // Callback that creates and populates a data table,
+      // instantiates the pie chart, passes in the data and
+      // draws it.
+      function drawChart() {
+
+      // Set chart options
+      var options = {'width':100,
+                     'height':100,
+                     legend: 'none',
+      slices: {
+            0: { color: 'green' },
+            1: { color: 'blue' },
+            2: { color: 'yellow' },
+            3: { color: 'red'},
+            4: { color: "gray"}
+          }};
+
+      $(".status_fig").each(function(i){
+          var node = this;
+          var title = $(node).attr("title");
+              console.log("title", title);
+          if(title) {
+              var status = JSON.parse(title);
+              console.log("node", i, status);
+
+              var data = new google.visualization.DataTable();
+              data.addColumn('string', 'State');
+              data.addColumn('number', 'Count');
+
+              var total = 0;
+              for(s in status) {
+                  total += status[s];
+              }
+
+              $(["Finished", "Submitted", "Running", "Failed"]).each(function(i, s) {
+
+                  var c = status[s];
+                  if(c === undefined) {
+                      c = 0;
+                  }
+                  data.addRow([s, c]);
+                  total -= c;
+              } )
+              data.addRow(["Other", total])
+
+
+              var chart = new google.visualization.PieChart(node);
+              chart.draw(data, options);
+          }
+      });
+    }
+    </script>
+{% endblock %}
+
 {% block content %}
 
+     <div id="chart_div" style="width:400; height:300"></div>
+
+    <form>
+  Only show <select name="tag">
+    <option value="">All</option>
+{% for tag in tags %}
+    <option value="{{ tag }}">{{ tag }}</option>
+{% endfor %}
+  </select>
+    <input type="submit">
+    </form>
+
   <h1>Job directories</h1>
+
+  <table class="table">
+    <thead>
+      <tr>
+        {% for k, v in fixed_values %}
+            <th>
+            {{ k }}
+            </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        {% for k, v in fixed_values %}
+        <td>
+          {{ v }}
+        </td>
+          {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+
 
   <table class="table">
     <thead>
@@ -10,6 +113,7 @@
         <th>
           Job name
         </th>
+        <th>Status</th>
         {% for c in column_names %}
             <th>
             {{ c }}
@@ -30,6 +134,14 @@
       <tr>
         <td>
           {{ j.job_name }}
+        </td>
+        <td>
+            {% if j.parsed_status %}
+            <div style="width:100; height:100" class="status_fig" title='{{ j.parsed_status|tojson }}'>
+            </div>
+            {% else %}
+                {{ j["status"] }}
+            {% endif %}
         </td>
         {% for c in column_names %}
             <td>
@@ -55,5 +167,7 @@
       {% endfor %}
     </tbody>
   </table>
+
+
 {% endblock %}
 
