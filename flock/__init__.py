@@ -108,11 +108,11 @@ class TaskStatusCache:
   def estimate_completion_rate(self, submitted_count, window=60*10):
     last_allowed = time.time() - window
 
-    if len(history) < 2:
+    if len(self.history) < 2:
       return None
 
     # get rid of entries which are too old, or where the finished count is actually greater then our current finished count.  (implying jobs went from finished->running, such as when retrying)
-    last = history[-1]
+    last = self.history[-1]
     history = [(timestamp, finished_count) for timestamp, finished_count in self.history if timestamp > last_allowed and finished_count <= last]
 
     if len(history) < 2:
