@@ -462,11 +462,11 @@ def submit_job(flock_config, params, timestamp=None):
     if timestamp == None:
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    title = "Run %s: %s" % (timestamp, ", ".join([params[k] for k in sorted_keys if not (k in ["repo", "branch"]) ]))
+    title = "Run %s: %s" % (timestamp, ", ".join([params[k] for k in sorted_keys if not (k in ["repo", "branch", "config"]) ]))
 
     return run_command(
         [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
-         TARGET_ROOT, t2.name, timestamp], title=title)
+         TARGET_ROOT, t2.name, timestamp, config["FLOCK_PATH"]], title=title)
 
 
 @app.route("/submit-batch-job-form")
@@ -599,7 +599,7 @@ if __name__ == "__main__":
     parser.add_argument('--config', dest="config_path", help='config file to use', default=os.path.expanduser("~/.clusterui.config"))
     args = parser.parse_args()
 
-    app.config.update(LOG_FILE='clusterui.log', DEBUG=True, PORT=9935)
+    app.config.update(LOG_FILE='clusterui.log', DEBUG=True, PORT=9935, FLOCK_PATH="/xchip/flock/bin/flock")
     app.config.from_pyfile(args.config_path)
     load_starcluster_config(app.config)
 

@@ -6,7 +6,6 @@ import tempfile
 import datetime
 import logging
 
-FLOCK_PATH = "/xchip/flock/bin/flockjob"
 CODE_DIR = "/xchip/datasci/code-cache"
 logging.basicConfig(level=logging.WARN)
 log = logging.getLogger("remoteExec")
@@ -58,13 +57,13 @@ def install_config(target_root, sha_code_dir, config_temp_file, timestamp):
 
     return sha_code_dir, target_dir, "bash "+target_dir+"/flock-wrapper.sh run"
 
-def install_wrapper_script(sha_code_dir, target_dir):
+def install_wrapper_script(sha_code_dir, target_dir, flock_path):
     with tempfile.NamedTemporaryFile() as temp_file:
         temp_file_name = temp_file.name
         temp_file.write("#!/bin/bash\n")
         temp_file.write("cd %s\n" % sha_code_dir)
         temp_file.write("echo retrying... >> "+target_dir+"/output.txt\n")
-        temp_file.write(FLOCK_PATH+" --rundir "+target_dir+"/files \"$1\" "+target_dir+"/config 2>&1 | tee -a "+target_dir+"/output.txt\n")
+        temp_file.write(flock_path+" --rundir "+target_dir+"/files \"$1\" "+target_dir+"/config 2>&1 | tee -a "+target_dir+"/output.txt\n")
         temp_file.flush()
 
         target_script = target_dir+"/flock-wrapper.sh"
@@ -86,7 +85,7 @@ class EchoAndCapture(object):
 
 import json
 
-def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp):
+def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp, flock_path):
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
             sha = get_sha(repo, branch)
@@ -101,7 +100,7 @@ def deploy(host, key_filename, repo, branch, config_file, target_root, json_para
             working_dir, target_dir, command = install_config(target_root, sha_code_dir, config_file, timestamp)
             put(json_params, target_dir+"/config.json")
             with cd(working_dir):
-                install_wrapper_script(working_dir, target_dir)
+                install_wrapper_script(working_dir, target_dir, flock_path)
                 #stdout_capture = EchoAndCapture(target_dir+"/output.txt")
                 run(command)
                 #stdout_capture.close()
