@@ -6,7 +6,7 @@ import tempfile
 import datetime
 import logging
 
-CODE_DIR = "/xchip/datasci/code-cache"
+CODE_DIR = "/data2/code-cache"
 logging.basicConfig(level=logging.WARN)
 log = logging.getLogger("remoteExec")
 
