@@ -600,7 +600,7 @@ class Flock(object):
       self.write_json_summary(tasks, run_id)
 
       for task in tasks:
-        if task.status in [CREATED, SUBMITTED, UNKNOWN, QUEUED_UNKNOWN]:
+        if task.status in [CREATED, SUBMITTED, UNKNOWN, QUEUED_UNKNOWN, RUNNING]:
           is_complete = False
       
       created_tasks = [t for t in tasks if t.status == CREATED]
