@@ -439,7 +439,7 @@ def submit_job_req():
         response.headers["Content-Disposition"] = "attachment; filename=config.flock"
         return response
     else:
-        submit_job(flock_config, params)
+        return submit_job(flock_config, params)
 
 def submit_job(flock_config, params, timestamp=None):
     assert params["repo"] != None
