@@ -298,7 +298,7 @@ def list_jobs():
     try:
         jobs = json.loads(stdout)
     except ValueError:
-        return flask.render_string("Could not parse:\n"+stdout+"\n"+stderr);
+        return "Could not parse:\n"+stdout+"\n"+stderr
 
     tag_universe = set()
     filtered_jobs = []
@@ -343,6 +343,14 @@ def list_jobs():
 
 job_pattern = re.compile("\\d+-\\d+")
 
+@app.route("/trash-job")
+@secured
+def trash_job():
+    job_name = request.values["job"]
+    assert job_pattern.match(job_name) != None
+    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
+                                "mv " + TARGET_ROOT + "/" + job_name + " " + TARGET_ROOT + "/old"])
+
 @app.route("/pull-job")
 @secured
 def pull_job():
@@ -374,7 +382,7 @@ def check_job():
     job_name = request.values["job"]
     assert not ("/" in job_name)
     return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh check"])
+                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh check ; bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh failed |grep -v \"\\[\" | /tmp/cluster_scripts/grep_for_known_issues"])
 
 
 @app.route("/poll-job")
