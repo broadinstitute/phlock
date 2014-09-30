@@ -695,6 +695,10 @@ def load_config(filenames):
   
   if not ( "scatter_qsub_options" in config ):
     config["scatter_qsub_options"] = config["qsub_options"]
+    # if the scatter qsub options are not set, then default to scatter jobs getting 
+    # a higher priority.  However, it appears non-admins can't submit jobs with >0 priority
+    # so instead, make all other jobs lower priority
+    config["qsub_options"] = config["qsub_options"] + " -p -5"
   
   assert "base_run_dir" in config
   assert "executor" in config
