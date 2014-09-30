@@ -225,7 +225,7 @@ class LocalQueue(AbstractQueue):
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
     
-    tasks = find_tasks(run_id, self._extern_ids, set(), task_dirs, job_deps, self.cache)
+    tasks = find_tasks(run_id, self._extern_ids, {}, task_dirs, job_deps, self.cache)
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
 
