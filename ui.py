@@ -462,7 +462,7 @@ def submit_job(flock_config, params, timestamp=None):
     if timestamp == None:
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    title = "Run %s: %s" % (timestamp, ", ".join([params[k] for k in sorted_keys if not (k in ["repo", "branch", "config"]) ]))
+    title = "Run %s: %s" % (timestamp, ", ".join([str(params[k]) for k in sorted_keys if not (k in ["repo", "branch", "config"]) ]))
 
     return run_command(
         [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
