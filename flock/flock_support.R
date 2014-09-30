@@ -39,7 +39,7 @@ flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_c
     if(nchar(job.id) > 3) {
       job.subdir = paste(substr(job.subdir, 1, nchar(job.subdir)-3), '/', job.id, sep='')
     }
-    flock_per_task_state = inputs[job.index];
+    flock_per_task_state = inputs[[job.index]];
     flock_job_dir = paste(flock_run_dir, '/', task.dir, '/', job.subdir, sep='');
     dir.create(flock_job_dir, recursive=TRUE);
     flock_input_file = paste(flock_job_dir, '/input.Rdata', sep='')
