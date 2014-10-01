@@ -343,28 +343,37 @@ def list_jobs():
 
 job_pattern = re.compile("\\d+-\\d+")
 
-@app.route("/trash-job")
+def parse_and_validate_jobs(job_ids_json):
+    job_ids = json.loads(job_ids_json)
+    for job_id in job_ids:
+        assert job_pattern.match(job_id) != None
+    return job_ids
+
+@app.route("/trash-jobs", methods=["POST"])
 @secured
 def trash_job():
-    job_name = request.values["job"]
-    assert job_pattern.match(job_name) != None
-    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                                "mv " + TARGET_ROOT + "/" + job_name + " " + TARGET_ROOT + "/old"])
+    job_ids = parse_and_validate_jobs(request.values["job-ids"])
 
-@app.route("/pull-job")
+    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
+                            "mv " + " ".join([TARGET_ROOT + "/" + job_id for job_id in job_ids])+ " " + TARGET_ROOT + "/old"])
+
+
+
+@app.route("/pull-jobs", methods=["POST"])
 @secured
 def pull_job():
-    job_name = request.values["job"]
-    assert job_pattern.match(job_name) != None
+    job_ids = parse_and_validate_jobs(request.values["job-ids"])
+    destination = request.values["destination"]
+
     t = tempfile.NamedTemporaryFile(delete=False)
     t.write("set +ex\n")
-    t.write("cd /xchip/datasci/ec2-runs\n")
-    t.write("%s sshmaster %s --user ubuntu /xchip/scripts/make_model_summaries.R /data2/runs/%s/files/results\n" % (
-        config['STARCLUSTER_CMD'], config['CLUSTER_NAME'], job_name))
-    t.write("%s sshmaster %s --user ubuntu python /xchip/scripts/bundle_run_dirs.py /data2/runs/%s | tar xvzf -\n" % (
-        config['STARCLUSTER_CMD'], config['CLUSTER_NAME'], job_name))
+    t.write("if [ ! -e /xchip/datasci/ec2-runs/%s ] ; then mkdir %s ; fi\n" % (destination, destination))
+    t.write("cd /xchip/datasci/ec2-runs/%s\n" % destination)
+    for job_id in job_ids:
+        t.write("%s sshmaster %s --user ubuntu \"cd /data2/runs ; tar -czf - --exclude tasks --exclude temp %s \" | tar xvzf -\n" % (
+        config['STARCLUSTER_CMD'], config['CLUSTER_NAME'], job_id))
     t.close()
-    return run_command(["bash", t.name])
+    return run_command(["bash", t.name], title="Pulling %s to %s"%(", ".join(job_ids), destination))
 
 
 @app.route("/retry-job")
