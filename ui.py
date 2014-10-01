@@ -366,8 +366,8 @@ def pull_job():
     destination = request.values["destination"]
 
     t = tempfile.NamedTemporaryFile(delete=False)
-    t.write("set +ex\n")
-    t.write("if [ ! -e /xchip/datasci/ec2-runs/%s ] ; then mkdir %s ; fi\n" % (destination, destination))
+    t.write("set -ex\n")
+    t.write("if [ ! -e /xchip/datasci/ec2-runs/%s ] ; then mkdir /xchip/datasci/ec2-runs/%s ; fi\n" % (destination, destination))
     t.write("cd /xchip/datasci/ec2-runs/%s\n" % destination)
     for job_id in job_ids:
         t.write("%s sshmaster %s --user ubuntu \"cd /data2/runs ; tar -czf - --exclude tasks --exclude temp %s \" | tar xvzf -\n" % (
