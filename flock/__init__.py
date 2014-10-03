@@ -217,10 +217,11 @@ class AbstractQueue(object):
         os.rename(fn, dest)
 
 class LocalQueue(AbstractQueue):
-  def __init__(self):
+  def __init__(self, workdir):
     self._ran = set()
     self._extern_ids = {}
     super(LocalQueue, self).__init__()
+    self.workdir = workdir
     
   def find_tasks(self, run_id):
     task_dirs, job_deps = read_task_dirs(run_id)
@@ -231,7 +232,7 @@ class LocalQueue(AbstractQueue):
 
   def submit(self, run_id, task, is_scatter):
     d = task.full_path
-    cmd = "bash %s/task.sh >> %s/stdout.txt 2>> %s/stderr.txt" % (d,d,d)
+    cmd = "cd %s ; bash %s/task.sh >> %s/stdout.txt 2>> %s/stderr.txt" % (self.workdir, d, d, d)
     if cmd in self._ran:
       raise Exception("Already ran %s once" % cmd)
     self.system(cmd, ignore_retcode=True)
@@ -249,10 +250,11 @@ def split_options(s):
     return s.split(" ")
 
 class LSFQueue(AbstractQueue):
-  def __init__(self, bsub_options, scatter_bsub_options):
+  def __init__(self, bsub_options, scatter_bsub_options, workdir):
     super(LSFQueue, self).__init__()
     self.bsub_options = split_options(bsub_options)
     self.scatter_bsub_options = split_options(scatter_bsub_options)
+    self.workdir = workdir
     
   def get_active_lsf_jobs(self):
     handle = subprocess.Popen(["bjobs", "-w"], stdout=subprocess.PIPE)
@@ -294,7 +296,7 @@ class LSFQueue(AbstractQueue):
     
   def submit(self, run_id, task, is_scatter):
     d = task.full_path
-    cmd = ["bsub", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d]
+    cmd = ["bsub", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d, "-cwd", self.workdir]
     if is_scatter:
       cmd.extend(self.bsub_options)
     else:
@@ -320,10 +322,12 @@ class LSFQueue(AbstractQueue):
     raise Exception("bkill %s" % task.external_id)
 
 class SGEQueue(AbstractQueue):
-  def __init__(self, qsub_options, scatter_qsub_options):
+  def __init__(self, qsub_options, scatter_qsub_options, name):
     super(SGEQueue, self).__init__()
     self.qsub_options = split_options(qsub_options)
     self.scatter_qsub_options = split_options(scatter_qsub_options)
+
+    self.name = re.sub("\\W+", "-", name)
     
   def get_active_sge_jobs(self):
     handle = subprocess.Popen(["qstat", "-xml"], stdout=subprocess.PIPE)
@@ -352,16 +356,17 @@ class SGEQueue(AbstractQueue):
     tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
     self.last_estimate = self.cache.update_estimate(tasks)    
     return tasks
-
     
   def submit(self, run_id, task, is_scatter):
     d = task.full_path
 
-    # make a hash of the run directory that will likely be unique so that we can distinguish which job is which
-    safe_run_id = base64.urlsafe_b64encode(hashlib.md5(run_id).digest())[0:10]
     
     task_path_comps = d.split("/")
-    job_name = "t-%s-%s" % (task_path_comps[-1], safe_run_id)
+    task_name = task_path_comps[-1]
+    if not task_name[0].isalpha():
+      task_name = "t"+task_name
+      
+    job_name = "%s-%s" % (task_name, self.safe_name)
 
     cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d] 
     if is_scatter:
@@ -370,7 +375,7 @@ class SGEQueue(AbstractQueue):
       cmd.extend(self.qsub_options)
     cmd.extend(["%s/task.sh" % d])
     log.info("EXEC: %s", cmd)
-    handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    handle = subprocess.Popen(cmd, stdout=subprocess.PIPE, cwd=self.workdir)
     stdout, stderr = handle.communicate()
     
     #Stdout Example:
@@ -397,8 +402,9 @@ def divide_into_batches(elements, size):
     yield elements[i:i+size]
 
 class LocalBgQueue(AbstractQueue):
-  def __init__(self):
+  def __init__(self, workdir):
     super(LocalBgQueue, self).__init__()
+    self.workdir = workdir
     
   def get_active_procs(self):
     import getpass
@@ -439,7 +445,7 @@ class LocalBgQueue(AbstractQueue):
     stderr = open("%s/stderr.txt" % d, "a")
     cmd = ["bash", "%s/task.sh" % d]
     log.info("executing: %s", cmd)
-    handle = subprocess.Popen(cmd, stdout=stdout, stderr=stderr)
+    handle = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, cwd=self.workdir)
     stdout.close()
     stderr.close()
     
@@ -648,7 +654,7 @@ class Flock(object):
         os.unlink("%s/job_id.txt" % task.full_path)
     self.poll(run_id, wait)
 
-Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options", "scatter_bsub_options", "scatter_qsub_options"])
+Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options", "scatter_bsub_options", "scatter_qsub_options", "workdir", "name", "run_id"])
 
 def parse_config(f):
   props = {}
@@ -686,8 +692,8 @@ def parse_config(f):
 
   return props
 
-def load_config(filenames):
-  config = {"bsub_options":"", "qsub_options":""}
+def load_config(filenames, run_id, overrides):
+  config = {"bsub_options":"", "qsub_options":"", "workdir":".","name":"", "base_run_dir":"."}
   for filename in filenames:
     log.info("Reading config from %s", filename)
     with open(filename) as f:
@@ -702,6 +708,12 @@ def load_config(filenames):
     # a higher priority.  However, it appears non-admins can't submit jobs with >0 priority
     # so instead, make all other jobs lower priority
     config["qsub_options"] = config["qsub_options"] + " -p -5"
+
+  config['run_id'] = os.path.abspath(os.path.join(config['base_run_dir'], os.path.basename(run_id)))
+  # make a hash of the run directory that will likely be unique so that we can distinguish which job is which
+  config['name'] = base64.urlsafe_b64encode(hashlib.md5(config['run_id']).digest())[0:10]
+
+  config.update(overrides)
   
   assert "base_run_dir" in config
   assert "executor" in config
@@ -717,6 +729,8 @@ def flock_cmd_line(cmd_line_args):
   parser.add_argument('--test', help='Run a test job', action='store_true')
   parser.add_argument('--maxsubmit', type=int)
   parser.add_argument('--rundir', help="Override the run directory used by this run")
+  parser.add_argument('--workdir', help="Override the working directory used by each task")
+  parser.add_argument('--executor', help="Override the execution method")
   parser.add_argument('command', help='One of: run, check, poll, retry or kill')
   parser.add_argument('run_id', help='Path to config file, which in turn will be used as the id for this run')
   
@@ -730,26 +744,31 @@ def flock_cmd_line(cmd_line_args):
     config_files.append(flock_default_config)
   config_files.append(args.run_id)
   
-  config = load_config(config_files)
+  overrides = {}
+  if args.rundir:
+    overrides['run_id'] = args.rundir
+  if args.workdir:
+    overrides['workdir'] = args.workdir
+  if args.executor:
+    overrides["executor"] = args.executor
+  
+  config = load_config(config_files, args.run_id, overrides)
+
+  run_id = config.run_id
   
   # now, interpret that config
   if config.executor == "localbg":
-    job_queue = LocalBgQueue()
+    job_queue = LocalBgQueue(config.workdir)
   elif config.executor == "local":
-    job_queue = LocalQueue()
+    job_queue = LocalQueue(config.workdir)
   elif config.executor == "sge":
-    job_queue = SGEQueue(config.qsub_options, config.scatter_qsub_options)
+    job_queue = SGEQueue(config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
   elif config.executor == "lsf":
-    job_queue = LSFQueue(config.bsub_options, config.scatter_bsub_options)
+    job_queue = LSFQueue(config.bsub_options, config.scatter_bsub_options, config.workdir)
   else:
     raise Exception("Unknown executor: %s" % config.executor)
   
   command = args.command
-
-  if args.rundir == None:
-    run_id = os.path.abspath(os.path.join(config.base_run_dir, os.path.basename(args.run_id)))
-  else:
-    run_id = args.rundir
 
   test_job_count = None
   if args.test:
@@ -779,4 +798,3 @@ def flock_cmd_line(cmd_line_args):
     f.list_failures(run_id)
   else:
     raise Exception("Unknown command: %s" % command)
-
