@@ -364,7 +364,10 @@ class SGEQueue(AbstractQueue):
     job_name = "t-%s-%s" % (task_path_comps[-1], safe_run_id)
 
     cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d] 
-    cmd.extend(self.qsub_options)
+    if is_scatter:
+      cmd.extend(self.scatter_qsub_options)
+    else:
+      cmd.extend(self.qsub_options)
     cmd.extend(["%s/task.sh" % d])
     log.info("EXEC: %s", cmd)
     handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)
