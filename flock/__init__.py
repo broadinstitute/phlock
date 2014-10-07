@@ -710,9 +710,12 @@ def load_config(filenames, run_id, overrides):
     # so instead, make all other jobs lower priority
     config["qsub_options"] = config["qsub_options"] + " -p -5"
 
-  config['run_id'] = os.path.abspath(os.path.join(config['base_run_dir'], os.path.basename(run_id)))
-  # make a hash of the run directory that will likely be unique so that we can distinguish which job is which
-  config['name'] = base64.urlsafe_b64encode(hashlib.md5(config['run_id']).digest())[0:10]
+  if not ("run_id" in config):  
+    config['run_id'] = os.path.abspath(os.path.join(config['base_run_dir'], os.path.basename(run_id)))
+
+  if not ("name" in config):
+    # make a hash of the run directory that will likely be unique so that we can distinguish which job is which
+    config['name'] = base64.urlsafe_b64encode(hashlib.md5(config['run_id']).digest())[0:10]
 
   config.update(overrides)
   
