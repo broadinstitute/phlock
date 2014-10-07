@@ -478,13 +478,13 @@ class Flock(object):
     if retcode != 0 and (not ignore_retcode):
       raise Exception("Command terminated with exit status = %d" % retcode)
 
-  def wait_for_completion(self, run_id):
+  def wait_for_completion(self, run_id, maxsubmit):
     is_complete = False
     sleep_time = 1
     while not is_complete:
       time.sleep(sleep_time)
       sleep_time = min(30, sleep_time * 2)
-      is_complete, submitted_count = self.poll_once(run_id)
+      is_complete, submitted_count = self.poll_once(run_id, maxsubmit)
       if submitted_count > 0:
         sleep_time = 1
       
@@ -546,9 +546,9 @@ class Flock(object):
     with open("%s/tasks-init/task_dirs.txt" % run_id, "w") as fd:
       fd.write("1 tasks-init/scatter\n")
 
-    self.poll_once(run_id, maxsubmit=maxsubmit)
+    self.poll_once(run_id, maxsubmit)
     if wait:
-      self.wait_for_completion(run_id)
+      self.wait_for_completion(run_id, maxsubmit)
     else:
       print "Jobs are running, but --nowait was specified, so exiting"
 
@@ -607,7 +607,7 @@ class Flock(object):
     with open(run_id+"/tasks/last_status.json", "w") as fd:
       fd.write(json.dumps(jobs_per_status))
 
-  def poll_once(self, run_id, maxsubmit=None):
+  def poll_once(self, run_id, maxsubmit=1000000):
     is_complete = True
     submitted_count = 0
     while True:
@@ -620,9 +620,11 @@ class Flock(object):
         if task.status in [CREATED, SUBMITTED, UNKNOWN, QUEUED_UNKNOWN, RUNNING]:
           is_complete = False
       
+      active_task_count = len([t for t in tasks if t.status in [SUBMITTED, RUNNING]])
+      maxsubmit_now = max(0, maxsubmit-active_task_count)
       created_tasks = [t for t in tasks if t.status == CREATED]
-      if maxsubmit != None and len(created_tasks) > (maxsubmit - submitted_count):
-        created_tasks = created_tasks[:maxsubmit]
+      if len(created_tasks) > maxsubmit_now:
+        created_tasks = created_tasks[:maxsubmit_now]
         
       for task in created_tasks:
         self.job_queue.clean_task_dir(task)
@@ -634,11 +636,11 @@ class Flock(object):
 
     return is_complete, submitted_count
 
-  def poll(self, run_id, wait):
-    is_complete, submitted_count = self.poll_once(run_id)
+  def poll(self, run_id, wait, maxsubmit):
+    is_complete, submitted_count = self.poll_once(run_id, maxsubmit)
     if not is_complete:
       if wait:
-        self.wait_for_completion(run_id)
+        self.wait_for_completion(run_id, maxsubmit)
       else:
         print "Jobs are running, but --nowait was specified, so exiting"
 
@@ -648,12 +650,12 @@ class Flock(object):
     self.job_queue.kill(to_kill)
     log.info("%d active jobs killed", len(to_kill))
 
-  def retry(self, run_id, wait):
+  def retry(self, run_id, wait, maxsubmit):
     tasks = self.job_queue.find_tasks(run_id)
     for task in tasks:
       if task.status in [FAILED, UNKNOWN]:
         os.unlink("%s/job_id.txt" % task.full_path)
-    self.poll(run_id, wait)
+    self.poll(run_id, wait, maxsubmit)
 
 Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options", "scatter_bsub_options", "scatter_qsub_options", "workdir", "name", "run_id"])
 
@@ -731,7 +733,7 @@ def flock_cmd_line(cmd_line_args):
   parser = argparse.ArgumentParser()
   parser.add_argument('--nowait', help='foo help', action='store_true')
   parser.add_argument('--test', help='Run a test job', action='store_true')
-  parser.add_argument('--maxsubmit', type=int)
+  parser.add_argument('--maxsubmit', type=int, default=1000000)
   parser.add_argument('--rundir', help="Override the run directory used by this run")
   parser.add_argument('--workdir', help="Override the working directory used by each task")
   parser.add_argument('--executor', help="Override the execution method")
@@ -795,9 +797,9 @@ def flock_cmd_line(cmd_line_args):
   elif command == "check":
     f.check_and_print(run_id)
   elif command == "poll":
-    f.poll(run_id, not args.nowait)
+    f.poll(run_id, not args.nowait, args.maxsubmit)
   elif command == "retry":
-    f.retry(run_id, not args.nowait)
+    f.retry(run_id, not args.nowait, args.maxsubmit)
   elif command == "failed":
     f.list_failures(run_id)
   else:
