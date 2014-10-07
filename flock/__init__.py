@@ -322,12 +322,13 @@ class LSFQueue(AbstractQueue):
     raise Exception("bkill %s" % task.external_id)
 
 class SGEQueue(AbstractQueue):
-  def __init__(self, qsub_options, scatter_qsub_options, name):
+  def __init__(self, qsub_options, scatter_qsub_options, name, workdir):
     super(SGEQueue, self).__init__()
     self.qsub_options = split_options(qsub_options)
     self.scatter_qsub_options = split_options(scatter_qsub_options)
 
     self.name = re.sub("\\W+", "-", name)
+    self.workdir = workdir
     
   def get_active_sge_jobs(self):
     handle = subprocess.Popen(["qstat", "-xml"], stdout=subprocess.PIPE)
@@ -360,7 +361,6 @@ class SGEQueue(AbstractQueue):
   def submit(self, run_id, task, is_scatter):
     d = task.full_path
 
-    
     task_path_comps = d.split("/")
     task_name = task_path_comps[-1]
     if not task_name[0].isalpha():
