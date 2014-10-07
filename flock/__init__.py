@@ -327,7 +327,8 @@ class SGEQueue(AbstractQueue):
     self.qsub_options = split_options(qsub_options)
     self.scatter_qsub_options = split_options(scatter_qsub_options)
 
-    self.name = re.sub("\\W+", "-", name)
+    self.name = name
+    self.safe_name = re.sub("\\W+", "-", name)
     self.workdir = workdir
     
   def get_active_sge_jobs(self):
