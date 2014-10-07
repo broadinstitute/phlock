@@ -2,48 +2,54 @@
 {% block title %}Submit{% endblock %}
 {% block content %}
 
-  <form class="form-horizontal" enctype="multipart/form-data" role="form" method="post" action="/submit-batch-job">
+    <form class="form-horizontal" enctype="multipart/form-data" role="form" method="post" action="/submit-batch-job">
 
-      <div class="form-group">
-        <label for="repo" class="col-sm-3 control-label">repo</label>
+        <div class="form-group">
+            <label for="repo" class="col-sm-3 control-label">repo</label>
 
-        <div class="col-sm-8">
-            <input type="text" class="form-control" id="repo" name="repo" value="{{ default_repo }}">
+            <div class="col-sm-8">
+                <input type="text" class="form-control" id="repo" name="repo" value="{{ default_repo }}">
+            </div>
         </div>
-      </div>
 
-      <div class="form-group">
-        <label for="branch" class="col-sm-3 control-label">branch</label>
+        <div class="form-group">
+            <label for="branch" class="col-sm-3 control-label">branch</label>
 
-        <div class="col-sm-8">
-            <input type="text" class="form-control" id="branch" name="branch" value="{{ default_branch }}">
+            <div class="col-sm-8">
+                <input type="text" class="form-control" id="branch" name="branch" value="{{ default_branch }}">
+            </div>
         </div>
-      </div>
 
-      <div class="form-group">
-        <label for="config_defs" class="col-sm-3 control-label">config_defs</label>
+        <div class="form-group">
+            <label for="config_defs" class="col-sm-3 control-label">config_defs</label>
 
-        <div class="col-sm-8">
-            <textarea class="form-control" id="config_defs" name="config_defs"></textarea>
+            <div class="col-sm-8">
+                <textarea class="form-control" id="config_defs" name="config_defs"></textarea>
+            </div>
         </div>
-      </div>
 
-      <div class="form-group">
-        <label for="template" class="col-sm-3 control-label">template</label>
+        <div class="form-group">
+            <label for="template" class="col-sm-3 control-label">template</label>
 
-        <div class="col-sm-8">
-            <input type="file" class="form-control" id="template" name="template">
+            <div class="col-sm-8">
+                <input type="file" class="form-control" id="template" name="template">
+            </div>
         </div>
-      </div>
 
 
+        <div class="form-group">
+            <div class="col-sm-offset-3 col-sm-10">
+                <button name="submit" type="submit" value="submit" class="btn btn-default">Execute</button>
+            </div>
+        </div>
 
-    <div class="form-group">
-      <div class="col-sm-offset-3 col-sm-10">
-        <button name="submit" type="submit" class="btn btn-default">Execute</button>
-      </div>
-    </div>
-  </form>
+        <div class="form-group">
+            <div class="col-sm-offset-3 col-sm-10">
+                <button name="submit" type="submit" value="export" class="btn btn-default">Export first configuration</button>
+            </div>
+        </div>
+
+    </form>
 
 
 {% endblock %}

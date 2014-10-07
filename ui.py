@@ -432,6 +432,9 @@ def submit_job_form():
     return flask.render_template("submit-job-form.html", form=formspec.ATLANTIS_FORM)
 
 
+def get_current_timestamp():
+    return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
 @app.route("/submit-job", methods=["POST"])
 @secured
 def submit_job_req():
@@ -443,6 +446,8 @@ def submit_job_req():
     params = parse_reponse(f.fields, request.values, request.files)
     flock_config = formspec.apply_parameters(f.template, params)
 
+    params["run_id"] = get_current_timestamp()
+
     if "download" in request.values:
         response = flask.make_response(flock_config)
         response.headers["Content-Disposition"] = "attachment; filename=config.flock"
@@ -450,9 +455,11 @@ def submit_job_req():
     else:
         return submit_job(flock_config, params)
 
-def submit_job(flock_config, params, timestamp=None):
+def submit_job(flock_config, params):
     assert params["repo"] != None
     assert params["branch"] != None
+    assert params["run_id"] != None
+    assert params["sha"] != None
 
     ec2 = get_ec2_connection()
     master, key_location = get_master_info(ec2)
@@ -468,14 +475,24 @@ def submit_job(flock_config, params, timestamp=None):
     sorted_keys = params.keys()
     sorted_keys.sort()
 
-    if timestamp == None:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-
-    title = "Run %s: %s" % (timestamp, ", ".join([str(params[k]) for k in sorted_keys if not (k in ["repo", "branch", "config"]) ]))
+    run_id = params['run_id']
+    title = "Run %s: %s" % (run_id, ", ".join([str(params[k]) for k in sorted_keys if not (k in ["run_id", "sha", "repo", "branch", "config"]) ]))
 
     return run_command(
         [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
-         TARGET_ROOT, t2.name, timestamp, config["FLOCK_PATH"]], title=title)
+         TARGET_ROOT, t2.name, run_id, config["FLOCK_PATH"], params['sha']], title=title)
+
+
+def get_sha(repo, branch):
+    proc = subprocess.Popen(["git", "ls-remote", repo], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = proc.communicate()
+
+    pairs = [line.split("\t") for line in stdout.split("\n")]
+    for sha, tag in pairs:
+        if tag == branch:
+            return sha
+
+    raise Exception("Could not find %s in %s, stderr=%s" % (branch, repr(pairs), repr(stderr)))
 
 
 @app.route("/submit-batch-job-form")
@@ -491,22 +508,25 @@ def submit_batch_job():
 
     config_defs = json.loads(request.values['config_defs'])
 
-    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str)
+    timestamp = get_current_timestamp()
+    repo = request.values["repo"]
+    branch = request.values["branch"]
+    sha = get_sha(repo, branch)
+    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str, timestamp, {"repo": repo, "branch": branch, "sha": sha})
 
-    job_index = 0
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    submit = request.values['submit']
+    if submit == 'submit':
+        for params, flock in json_and_flock:
+            submit_job(flock, params)
+        return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")
 
-    job_id_format = "%%s-%%0%dd" % math.ceil(math.log(len(json_and_flock))/math.log(10))
-
-    for params, flock in json_and_flock:
-
-        params["repo"] = request.values["repo"]
-        params["branch"] = request.values["branch"]
-        submit_job(flock, params, timestamp=job_id_format % (timestamp, job_index))
-
-        job_index += 1
-
-    return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")
+    elif submit == 'export':
+        params, flock_config = json_and_flock[0]
+        response = flask.make_response(flock_config)
+        response.headers["Content-Disposition"] = "attachment; filename=config.flock"
+        return response
+    else:
+        raise Exception("invalid value for submit (%s)" % submit)
 
 monitor_parameters = cluster_monitor.Parameters()
 cluster_terminal = None

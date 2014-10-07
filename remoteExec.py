@@ -10,14 +10,6 @@ CODE_DIR = "/data2/code-cache"
 logging.basicConfig(level=logging.WARN)
 log = logging.getLogger("remoteExec")
 
-def get_sha(repo, branch):
-    stdout = local("git ls-remote %s"%(repo,), capture=True)
-    pairs = [line.split("\t") for line in stdout.split("\n")]
-    for sha, tag in pairs:
-        if tag == branch:
-            return sha
-    raise Exception("Could not find %s in %s" % (branch, repr(pairs)))
-
 def exists(path, verbose=False):
     return run("/usr/bin/test -e %s" % path, warn_only=True, quiet=True).return_code == 0
 
@@ -31,7 +23,9 @@ def deploy_code_from_git(repo, sha, branch):
 
         # construct zip file from git and copy to host
         with tempfile.NamedTemporaryFile() as zip_temp_file:
-            zip_temp_file_name = zip_temp_file.name 
+            zip_temp_file_name = zip_temp_file.name
+            # it makes me sad that I can't archive by sha, so there's a race condition here.  The solution appears to be
+            # to locally mirror the repo, but this such a small volume project, I'll delay implementing that.
             local("git archive --remote "+repo+" -o "+zip_temp_file_name+" --format=zip "+branch)
     
             target_zip_file = CODE_DIR+"/"+sha+".zip"
@@ -85,10 +79,9 @@ class EchoAndCapture(object):
 
 import json
 
-def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp, flock_path):
+def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp, flock_path, sha):
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
-            sha = get_sha(repo, branch)
             sha_code_dir = deploy_code_from_git(repo, sha, branch)
 
             params = json.loads(open(json_params).read())
