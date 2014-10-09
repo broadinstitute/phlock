@@ -7,3 +7,6 @@ cpus_per_instance = {}
 for instance_type, cpus in instance_sizes:
     cpus_per_instance[instance_type] = cpus
 cpus_per_instance['m3.medium'] = 1
+cpus_per_instance['m3.large'] = 2
+cpus_per_instance['m3.xlarge'] = 4
+cpus_per_instance['m3.2xlarge'] = 8
