@@ -184,9 +184,20 @@ def index():
     active_terminals.sort(lambda a, b: cmp(a.start_time, b.start_time))
 
     state = cluster_manager.get_state()
-    print "state=%s" % state
 
-    return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, state=state, hourly_rate=hourly_rate)
+    request_counts = collections.defaultdict(lambda: 0)
+    for request in ec2.get_all_spot_instance_requests(filters={"state":"open"}):
+        name = (request.launch_specification.instance_type, request.price, request.status.message)
+        request_counts[name] += 1
+
+    open_spot_requests = []
+    for k in request_counts.keys():
+        instance_type, price, status = k
+        count = request_counts[k]
+        cpus = cpus_per_instance[instance_type] * count
+        open_spot_requests.append( (instance_type, status, price, count, cpus) )
+
+    return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, state=state, hourly_rate=hourly_rate, open_spot_requests=open_spot_requests)
 
 
 @app.route("/kill-terminal/<id>")

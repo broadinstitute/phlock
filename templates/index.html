@@ -32,6 +32,22 @@
     </table>
   {% endif %}
 
+  {%  if open_spot_requests == [] %}
+    <h2>No spot requests open</h2>
+  {% else %}
+    <h2>Open requests for additional nodes</h2>
+    <table class="table">
+      <thead>
+        <tr><th>Type</th><th>Status</th><th>Price</th><th>Count</th><th>CPUs</th></tr>
+      </thead>
+      <tbody>
+      {% for instance_type, status, price, count, cpus in open_spot_requests %}
+        <tr><td>{{ instance_type }}</td><td>{{ status }}</td><td>{{ price }}</td><td>{{ count }}</td><td>{{ cpus }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
   <h2>Running commands:</h2>
   <ul>
 	{% for terminal in terminals %}
