@@ -464,9 +464,9 @@ def submit_job_req():
         response.headers["Content-Disposition"] = "attachment; filename=config.flock"
         return response
     else:
-        return submit_job(flock_config, params)
+        return submit_job(flock_config, params, False)
 
-def submit_job(flock_config, params):
+def submit_job(flock_config, params, nowait):
     assert params["repo"] != None
     assert params["branch"] != None
     assert params["run_id"] != None
@@ -491,7 +491,7 @@ def submit_job(flock_config, params):
 
     return run_command(
         [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
-         TARGET_ROOT, t2.name, run_id, config["FLOCK_PATH"], params['sha']], title=title)
+         TARGET_ROOT, t2.name, run_id, config["FLOCK_PATH"], params['sha'], "nowait" if nowait else "wait"], title=title)
 
 
 def get_sha(repo, branch):
@@ -528,7 +528,7 @@ def submit_batch_job():
     submit = request.values['submit']
     if submit == 'submit':
         for params, flock in json_and_flock:
-            submit_job(flock, params)
+            submit_job(flock, params, True)
         return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")
 
     elif submit == 'export':

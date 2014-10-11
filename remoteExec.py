@@ -49,7 +49,8 @@ def install_config(target_root, sha_code_dir, config_temp_file, timestamp):
     # upload the config file and run via flock, after setting the working directory to be the current code dir
     put(config_temp_file, target_dir+"/config")
 
-    return sha_code_dir, target_dir, "bash "+target_dir+"/flock-wrapper.sh run"
+    command = "bash "+target_dir+"/flock-wrapper.sh run"
+    return sha_code_dir, target_dir, command
 
 def install_wrapper_script(sha_code_dir, target_dir, flock_path):
     with tempfile.NamedTemporaryFile() as temp_file:
@@ -57,7 +58,7 @@ def install_wrapper_script(sha_code_dir, target_dir, flock_path):
         temp_file.write("#!/bin/bash\n")
         temp_file.write("cd %s\n" % sha_code_dir)
         temp_file.write("echo retrying... >> "+target_dir+"/output.txt\n")
-        temp_file.write(flock_path+" --rundir "+target_dir+"/files \"$1\" "+target_dir+"/config 2>&1 | tee -a "+target_dir+"/output.txt\n")
+        temp_file.write(flock_path+" --rundir "+target_dir+"/files $* "+target_dir+"/config 2>&1 | tee -a "+target_dir+"/output.txt\n")
         temp_file.flush()
 
         target_script = target_dir+"/flock-wrapper.sh"
@@ -79,7 +80,7 @@ class EchoAndCapture(object):
 
 import json
 
-def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp, flock_path, sha):
+def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp, flock_path, sha, nowait):
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
             sha_code_dir = deploy_code_from_git(repo, sha, branch)
@@ -91,6 +92,8 @@ def deploy(host, key_filename, repo, branch, config_file, target_root, json_para
 
         with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
             working_dir, target_dir, command = install_config(target_root, sha_code_dir, config_file, timestamp)
+            if nowait == "nowait":
+                command += " --nowait"
             put(json_params, target_dir+"/config.json")
             with cd(working_dir):
                 install_wrapper_script(working_dir, target_dir, flock_path)
