@@ -27,10 +27,7 @@ UNKNOWN = "Missing"
 
 Task = collections.namedtuple("Task", ["task_dir", "external_id", "status", "full_path"])
 
-FORMAT = "[%(asctime)-15s] %(message)s"
-logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt="%Y%m%d-%H%M%S")
 log = logging.getLogger("flock")
-
 
 def timeit(method):
     def timed(*args, **kw):
@@ -214,6 +211,17 @@ class AbstractQueue(object):
         self.last_estimate = None
         self.listener = listener
 
+    def submit(self, run_id, task, is_scatter):
+        d = task.full_path
+
+        stdout = "%s/stdout.txt" % d
+        stderr = "%s/stderr.txt" % d
+        script_to_execute = "%s/task.sh" % d
+
+        script_to_execute, stdout, stderr = self.listener.presubmit(run_id, task, script_to_execute, stdout, stderr)
+
+        self.add_to_queue(run_id, task, is_scatter, script_to_execute, stdout, stderr)
+
     def get_last_estimate(self):
         return self.last_estimate
 
@@ -227,11 +235,49 @@ class AbstractQueue(object):
                 os.rename(fn, dest)
 
 
+class JobListener(object):
+    def task_submitted(self, run_id, task_dir, external_id):
+        with open("%s/job_id.txt" % task_dir, "w") as fd:
+            fd.write(external_id)
+
+    def presubmit(self, run_id, task, task_script, stdout, stderr):
+        return (task_script, stdout, stderr)
+
+import socket
+
+class ConsolidatedMonitor(JobListener):
+    def __init__(self, port, flock_home):
+        endpoint_url = "http://%s:%d" % (socket.gethostname(), port)
+        self.endpoint_url = endpoint_url
+        self.flock_home = flock_home
+
+    def presubmit(self, run_id, task, task_script, stdout, stderr):
+        d = task.full_path
+        script_to_execute = "%s/wrapped_task.sh" % d
+        with open(script_to_execute, "w") as fd:
+            fd.write("set -e\n"
+                     "python %(flock_home)s/notify.py %(endpoint_url)s started %(run_id)s %(task_dir)s\n"
+                     "set +e\n"
+                     "if bash %(task_script)s ; then\n"
+                     "  set -e\n"
+                     "  python %(flock_home)s/notify.py %(endpoint_url)s completed %(run_id)s %(task_dir)s\n"
+                     "else\n"
+                     "  set -e\n"
+                     "  python %(flock_home)s/notify.py %(endpoint_url)s failed %(run_id)s %(task_dir)s\n"
+                     "fi\n" % dict(endpoint_url=self.endpoint_url,
+                                   run_id=run_id,
+                                   task_dir=d,
+                                   task_script=task_script,
+                                   flock_home=self.flock_home))
+
+        return (script_to_execute, stdout, stderr)
+
+
 class LocalQueue(AbstractQueue):
-    def __init__(self, workdir):
+    def __init__(self, listener, workdir):
         self._ran = set()
         self._extern_ids = {}
-        super(LocalQueue, self).__init__()
+        super(LocalQueue, self).__init__(listener)
         self.workdir = workdir
 
     def find_tasks(self, run_id):
@@ -241,9 +287,9 @@ class LocalQueue(AbstractQueue):
         self.last_estimate = self.cache.update_estimate(tasks)
         return tasks
 
-    def submit(self, run_id, task, is_scatter):
+    def submit(self, run_id, task, is_scatter, script_to_execute, stdout, stderr):
         d = task.full_path
-        cmd = "cd %s ; bash %s/task.sh >> %s/stdout.txt 2>> %s/stderr.txt" % (self.workdir, d, d, d)
+        cmd = "cd %s ; bash %s >> %s 2>> %s" % (self.workdir, script_to_execute, stdout, stderr)
         if cmd in self._ran:
             raise Exception("Already ran %s once" % cmd)
         self.system(cmd, ignore_retcode=True)
@@ -307,14 +353,14 @@ class LSFQueue(AbstractQueue):
         self.last_estimate = self.cache.update_estimate(tasks)
         return tasks
 
-    def submit(self, run_id, task, is_scatter):
+    def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout, stderr):
         d = task.full_path
-        cmd = ["bsub", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d, "-cwd", self.workdir]
+        cmd = ["bsub", "-o", stdout, "-e", stderr, "-cwd", self.workdir]
         if is_scatter:
             cmd.extend(self.bsub_options)
         else:
             cmd.extend(self.scatter_bsub_options)
-        cmd.append("bash %s/task.sh" % d)
+        cmd.append("bash %s" % script_to_execute)
         log.info("EXEC: %s", cmd)
         handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         stdout, stderr = handle.communicate()
@@ -335,8 +381,8 @@ class LSFQueue(AbstractQueue):
 
 
 class SGEQueue(AbstractQueue):
-    def __init__(self, qsub_options, scatter_qsub_options, name, workdir):
-        super(SGEQueue, self).__init__()
+    def __init__(self, listener, qsub_options, scatter_qsub_options, name, workdir):
+        super(SGEQueue, self).__init__(listener)
         self.qsub_options = split_options(qsub_options)
         self.scatter_qsub_options = split_options(scatter_qsub_options)
 
@@ -372,7 +418,7 @@ class SGEQueue(AbstractQueue):
         self.last_estimate = self.cache.update_estimate(tasks)
         return tasks
 
-    def submit(self, run_id, task, is_scatter):
+    def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout_path, stderr_path):
         d = task.full_path
 
         task_path_comps = d.split("/")
@@ -382,12 +428,12 @@ class SGEQueue(AbstractQueue):
 
         job_name = "%s-%s" % (task_name, self.safe_name)
 
-        cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", "%s/stdout.txt" % d, "-e", "%s/stderr.txt" % d]
+        cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", stdout_path, "-e", stderr_path]
         if is_scatter:
             cmd.extend(self.scatter_qsub_options)
         else:
             cmd.extend(self.qsub_options)
-        cmd.extend(["%s/task.sh" % d])
+        cmd.extend([script_to_execute])
         log.info("EXEC: %s", cmd)
         handle = subprocess.Popen(cmd, stdout=subprocess.PIPE, cwd=self.workdir)
         stdout, stderr = handle.communicate()
@@ -417,8 +463,8 @@ def divide_into_batches(elements, size):
 
 
 class LocalBgQueue(AbstractQueue):
-    def __init__(self, workdir):
-        super(LocalBgQueue, self).__init__()
+    def __init__(self, listener, workdir):
+        super(LocalBgQueue, self).__init__(listener)
         self.workdir = workdir
 
     def get_active_procs(self):
@@ -455,11 +501,11 @@ class LocalBgQueue(AbstractQueue):
         self.last_estimate = self.cache.update_estimate(tasks)
         return tasks
 
-    def submit(self, run_id, task, is_scatter):
+    def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout_path, stderr_path):
         d = task.full_path
-        stdout = open("%s/stdout.txt" % d, "a")
-        stderr = open("%s/stderr.txt" % d, "a")
-        cmd = ["bash", "%s/task.sh" % d]
+        stdout = open(stdout_path, "a")
+        stderr = open(stderr_path, "a")
+        cmd = ["bash", script_to_execute]
         log.info("executing: %s", cmd)
         handle = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, cwd=self.workdir)
         stdout.close()
@@ -469,12 +515,6 @@ class LocalBgQueue(AbstractQueue):
 
     def kill(self, task):
         raise Exception("bkill %s" % task.external_id)
-
-
-class JobListener(object):
-    def task_submitted(self, run_id, task_dir, external_id):
-        with open("%s/job_id.txt" % task_dir, "w") as fd:
-            fd.write(external_id)
 
 
 def dump_file(filename):
@@ -680,7 +720,8 @@ class Flock(object):
 
 
 Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options",
-                                           "scatter_bsub_options", "scatter_qsub_options", "workdir", "name", "run_id"])
+                                           "scatter_bsub_options", "scatter_qsub_options", "workdir", "name", "run_id",
+                                           "monitor_port"])
 
 
 def parse_config(f):
@@ -721,7 +762,7 @@ def parse_config(f):
 
 
 def load_config(filenames, run_id, overrides):
-    config = {"bsub_options": "", "qsub_options": "", "workdir": ".", "name": "", "base_run_dir": "."}
+    config = {"bsub_options": "", "qsub_options": "", "workdir": ".", "name": "", "base_run_dir": ".", "monitor_port":None}
     for filename in filenames:
         log.info("Reading config from %s", filename)
         with open(filename) as f:
@@ -753,80 +794,3 @@ def load_config(filenames, run_id, overrides):
     return Config(**config)
 
 
-def flock_cmd_line(cmd_line_args):
-    flock_home = os.path.dirname(os.path.realpath(__file__))
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--nowait', help='foo help', action='store_true')
-    parser.add_argument('--test', help='Run a test job', action='store_true')
-    parser.add_argument('--maxsubmit', type=int, default=1000000)
-    parser.add_argument('--rundir', help="Override the run directory used by this run")
-    parser.add_argument('--workdir', help="Override the working directory used by each task")
-    parser.add_argument('--executor', help="Override the execution method")
-    parser.add_argument('command', help='One of: run, check, poll, retry or kill')
-    parser.add_argument('run_id', help='Path to config file, which in turn will be used as the id for this run')
-
-    args = parser.parse_args(cmd_line_args)
-
-    # load the config files
-    config_files = []
-
-    flock_default_config = os.path.expanduser("~/.flock")
-    if os.path.exists(flock_default_config):
-        config_files.append(flock_default_config)
-    config_files.append(args.run_id)
-
-    overrides = {}
-    if args.rundir:
-        overrides['run_id'] = args.rundir
-    if args.workdir:
-        overrides['workdir'] = args.workdir
-    if args.executor:
-        overrides["executor"] = args.executor
-
-    config = load_config(config_files, args.run_id, overrides)
-
-    run_id = config.run_id
-
-    # now, interpret that config
-    if config.executor == "localbg":
-        job_queue = LocalBgQueue(config.workdir)
-    elif config.executor == "local":
-        job_queue = LocalQueue(config.workdir)
-    elif config.executor == "sge":
-        job_queue = SGEQueue(config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
-    elif config.executor == "lsf":
-        job_queue = LSFQueue(config.bsub_options, config.scatter_bsub_options, config.workdir)
-    else:
-        raise Exception("Unknown executor: %s" % config.executor)
-
-    command = args.command
-
-    test_job_count = None
-    if args.test:
-        test_job_count = 5
-        run_id += "-test"
-
-    log.info("Writing run to \"%s\"", run_id)
-
-    f = Flock(job_queue, flock_home)
-    job_queue.system = f.system
-
-    if command == "run":
-        if args.test and os.path.exists(run_id):
-            log.warn("%s already exists -- removing before running job", run_id)
-            shutil.rmtree(run_id)
-
-        f.run(run_id, config.invoke, not args.nowait, args.maxsubmit, test_job_count)
-    elif command == "kill":
-        f.kill(run_id)
-    elif command == "check":
-        f.check_and_print(run_id)
-    elif command == "poll":
-        f.poll(run_id, not args.nowait, args.maxsubmit)
-    elif command == "retry":
-        f.retry(run_id, not args.nowait, args.maxsubmit)
-    elif command == "failed":
-        f.list_failures(run_id)
-    else:
-        raise Exception("Unknown command: %s" % command)

@@ -1,7 +1,0 @@
-#!/usr/bin/env python
-
-import argparse
-import flock
-import sys
-
-flock.flock_cmd_line(sys.argv[1:])
