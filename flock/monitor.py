@@ -79,7 +79,10 @@ class TaskStore:
             db.execute("UPDATE TASKS SET status = ? WHERE node_name = ?", [READY, node_name])
         return True
 
-def main(db, port):
+def main():
+    db = sys.argv[1]
+    port = int(sys.argv[2])
+    
     store = TaskStore(db)
 
     server = SimpleXMLRPCServer(("0.0.0.0", port))
@@ -90,4 +93,4 @@ def main(db, port):
     server.serve_forever()
 
 if __name__ == "__main__":
-    main(sys.argv[1], int(sys.argv[2]))
+    main()

@@ -9,7 +9,10 @@ __author__ = 'pmontgom'
 log = logging.getLogger("flock")
 
 
-def main(cmd_line_args):
+def main(cmd_line_args=None):
+    if cmd_line_args == None:
+        cmd_line_args = sys.argv[1:]
+        
     FORMAT = "[%(asctime)-15s] %(message)s"
     logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt="%Y%m%d-%H%M%S")
 
