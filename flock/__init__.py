@@ -7,7 +7,7 @@ import subprocess
 import re
 import time
 import logging
-import shutil
+import socket
 import json
 import base64
 import hashlib
@@ -243,13 +243,22 @@ class JobListener(object):
     def presubmit(self, run_id, task, task_script, stdout, stderr):
         return (task_script, stdout, stderr)
 
-import socket
+import xmlrpclib
 
 class ConsolidatedMonitor(JobListener):
     def __init__(self, port, flock_home):
         endpoint_url = "http://%s:%d" % (socket.gethostname(), port)
         self.endpoint_url = endpoint_url
         self.flock_home = flock_home
+        self.service = xmlrpclib.ServerProxy(endpoint_url)
+
+        # just make sure we can connect and its working
+        version = self.service.get_version()
+        assert version != None
+
+    def task_submitted(self, run_id, task_dir, external_id):
+        JobListener.task_submitted(self, run_id, task_dir, external_id)
+        self.service.task_created(run_id, task_dir, external_id)
 
     def presubmit(self, run_id, task, task_script, stdout, stderr):
         d = task.full_path

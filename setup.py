@@ -9,6 +9,9 @@ setup(
     author_email="pgm@lazbox.org",
     url="https://github.com/pgm/flock",
     long_description=open('README.txt').read(),
-    entry_points={'console_scripts': [ "phlock = flock:main" ]}
+    entry_points={'console_scripts': [
+        "phlock = flock.main:main",
+        "phlock-monitor = flock.monitor:main"
+        ]},
     package_data={'flock': ['*.R']}
 )

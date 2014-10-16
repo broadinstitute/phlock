@@ -7,7 +7,7 @@ __author__ = 'pmontgom'
 
 # schema: SGE job number, job directory, try count, status = STARTED | FAILED | SUCCESS
 
-DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id STRING, task_dir STRING, status INTEGER, try_count INTEGER, node_name STRING)",
+DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id STRING, task_dir STRING, status INTEGER, try_count INTEGER, node_name STRING, external_id STRING)",
  "CREATE INDEX IDX_RUN_ID ON TASKS (run_id)",
  "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
  "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)"]
@@ -15,7 +15,8 @@ DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id STRING, task_dir STRING, statu
 STARTED = 1
 FAILED = -1
 SUCCESS = 2
-READY = 0
+SUBMITTED = 20
+READY = 100
 
 
 class TransactionContext:
@@ -43,6 +44,16 @@ class TaskStore:
 
     def transaction(self):
         return TransactionContext(self._connection)
+
+    def get_version(self):
+        return "1"
+
+    def task_created(self, run_id, task_dir, external_id):
+        with self.transaction() as db:
+            db.execute("UPDATE TASKS SET status = ?, external_id = ? WHERE task_dir = ?", [SUBMITTED, external_id, task_dir])
+            if db.rowcount == 0:
+                db.execute("INSERT INTO TASKS (run_id, task_dir, status, try_count, external_id) values (?, ?, ?, 1, ?)", [run_id, task_dir, SUBMITTED, external_id])
+        return True
 
     def task_started(self, run_id, task_dir, node_name):
         with self.transaction() as db:
@@ -73,7 +84,7 @@ def main(db, port):
 
     server = SimpleXMLRPCServer(("0.0.0.0", port))
     print "Listening on port %d..." % port
-    for method in ["task_started", "task_failed", "task_completed", "node_disappeared"]:
+    for method in ["task_created", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version"]:
         server.register_function(getattr(store, method), method)
 
     server.serve_forever()
