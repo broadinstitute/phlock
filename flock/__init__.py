@@ -381,7 +381,7 @@ class LSFQueue(AbstractQueue):
             raise Exception("Could not parse output from bsub: %s" % stdout)
 
         lsf_job_id = m.group(1)
-        self.listener.task_submitted(run_id, d, "LSF:" + lsf_job_id)
+        self.listener.task_submitted(run_id, d, self.external_id_prefix + lsf_job_id)
 
     def kill(self, task):
         raise Exception("bkill %s" % task.external_id)
@@ -392,7 +392,7 @@ class SGEQueue(AbstractQueue):
         super(SGEQueue, self).__init__(listener)
         self.qsub_options = split_options(qsub_options)
         self.scatter_qsub_options = split_options(scatter_qsub_options)
-        self.external_id_prefix = "LSF:"
+        self.external_id_prefix = "SGE:"
 
         self.name = name
         self.safe_name = re.sub("\\W+", "-", name)
@@ -447,7 +447,7 @@ class SGEQueue(AbstractQueue):
             raise Exception("Could not parse output from qsub: %s" % stdout)
 
         sge_job_id = m.group(1)
-        self.listener.task_submitted(run_id, d, "SGE:" + sge_job_id)
+        self.listener.task_submitted(run_id, d, self.external_id_prefix + sge_job_id)
 
     def kill(self, tasks):
         for batch in divide_into_batches(tasks, 100):
@@ -504,7 +504,7 @@ class LocalBgQueue(AbstractQueue):
         stdout.close()
         stderr.close()
 
-        self.listener.task_submitted(run_id, d, "PID:" + str(handle.pid))
+        self.listener.task_submitted(run_id, d, self.external_id_prefix + str(handle.pid))
 
     def kill(self, task):
         raise Exception("bkill %s" % task.external_id)
