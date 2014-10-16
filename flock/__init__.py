@@ -299,7 +299,7 @@ class LocalQueue(AbstractQueue):
         self.external_id_prefix = "INVALID:"
 
     def get_jobs_from_external_queue(self):
-        return []
+        return {}
 
     def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout, stderr):
         d = task.full_path
