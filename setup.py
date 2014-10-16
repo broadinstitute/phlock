@@ -1,9 +1,9 @@
-from distutils.core import setup
+from setuptools import setup, find_packages
 
 setup(
     name='flock',
     version='1.3',
-    packages=['flock',],
+    packages=find_packages(),
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     author="Philip Montgomery",
     author_email="pgm@lazbox.org",

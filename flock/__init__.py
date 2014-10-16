@@ -225,6 +225,14 @@ class AbstractQueue(object):
     def get_last_estimate(self):
         return self.last_estimate
 
+    def find_tasks(self, run_id):
+        task_dirs, job_deps = read_task_dirs(run_id)
+        queued_job_states = self.get_jobs_from_external_queue()
+        external_ids = read_external_ids(run_id, task_dirs, self.external_id_prefix)
+        tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
+        self.last_estimate = self.cache.update_estimate(tasks)
+        return tasks
+
     def clean_task_dir(self, task):
         for fn in ["%s/stdout.txt" % task.full_path, "%s/stderr.txt" % task.full_path]:
             if os.path.exists(fn):
@@ -288,15 +296,12 @@ class LocalQueue(AbstractQueue):
         self._extern_ids = {}
         super(LocalQueue, self).__init__(listener)
         self.workdir = workdir
+        self.external_id_prefix = "INVALID:"
 
-    def find_tasks(self, run_id):
-        task_dirs, job_deps = read_task_dirs(run_id)
+    def get_jobs_from_external_queue(self):
+        return []
 
-        tasks = find_tasks(run_id, self._extern_ids, {}, task_dirs, job_deps, self.cache)
-        self.last_estimate = self.cache.update_estimate(tasks)
-        return tasks
-
-    def submit(self, run_id, task, is_scatter, script_to_execute, stdout, stderr):
+    def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout, stderr):
         d = task.full_path
         cmd = "cd %s ; bash %s >> %s 2>> %s" % (self.workdir, script_to_execute, stdout, stderr)
         if cmd in self._ran:
@@ -323,8 +328,9 @@ class LSFQueue(AbstractQueue):
         self.bsub_options = split_options(bsub_options)
         self.scatter_bsub_options = split_options(scatter_bsub_options)
         self.workdir = workdir
+        self.external_id_prefix = "LSF:"
 
-    def get_active_lsf_jobs(self):
+    def get_jobs_from_external_queue(self):
         handle = subprocess.Popen(["bjobs", "-w"], stdout=subprocess.PIPE)
         stdout, stderr = handle.communicate()
 
@@ -353,14 +359,6 @@ class LSFQueue(AbstractQueue):
                     s = QUEUED_UNKNOWN
                 active_jobs[job_id] = s
         return active_jobs
-
-    def find_tasks(self, run_id):
-        task_dirs, job_deps = read_task_dirs(run_id)
-        queued_job_states = self.get_active_lsf_jobs()
-        external_ids = read_external_ids(run_id, task_dirs, "LSF:")
-        tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
-        self.last_estimate = self.cache.update_estimate(tasks)
-        return tasks
 
     def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout, stderr):
         d = task.full_path
@@ -394,12 +392,13 @@ class SGEQueue(AbstractQueue):
         super(SGEQueue, self).__init__(listener)
         self.qsub_options = split_options(qsub_options)
         self.scatter_qsub_options = split_options(scatter_qsub_options)
+        self.external_id_prefix = "LSF:"
 
         self.name = name
         self.safe_name = re.sub("\\W+", "-", name)
         self.workdir = workdir
 
-    def get_active_sge_jobs(self):
+    def get_jobs_from_external_queue(self):
         handle = subprocess.Popen(["qstat", "-xml"], stdout=subprocess.PIPE)
         stdout, stderr = handle.communicate()
 
@@ -418,14 +417,6 @@ class SGEQueue(AbstractQueue):
             else:
                 active_jobs[job_id] = QUEUED_UNKNOWN
         return active_jobs
-
-    def find_tasks(self, run_id):
-        task_dirs, job_deps = read_task_dirs(run_id)
-        queued_job_states = self.get_active_sge_jobs()
-        external_ids = read_external_ids(run_id, task_dirs, "SGE:")
-        tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
-        self.last_estimate = self.cache.update_estimate(tasks)
-        return tasks
 
     def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout_path, stderr_path):
         d = task.full_path
@@ -475,8 +466,9 @@ class LocalBgQueue(AbstractQueue):
     def __init__(self, listener, workdir):
         super(LocalBgQueue, self).__init__(listener)
         self.workdir = workdir
+        self.external_id_prefix = "PID:"
 
-    def get_active_procs(self):
+    def get_jobs_from_external_queue(self):
         import getpass
 
         cmd = ["ps", "-o", "pid", "-u", getpass.getuser()]
@@ -501,14 +493,6 @@ class LocalBgQueue(AbstractQueue):
                 pid = m.group(1)
                 active_jobs[pid] = RUNNING
         return active_jobs
-
-    def find_tasks(self, run_id):
-        task_dirs, job_deps = read_task_dirs(run_id)
-        queued_job_states = self.get_active_procs()
-        external_ids = read_external_ids(run_id, task_dirs, "PID:")
-        tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
-        self.last_estimate = self.cache.update_estimate(tasks)
-        return tasks
 
     def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout_path, stderr_path):
         d = task.full_path
