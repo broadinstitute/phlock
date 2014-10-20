@@ -64,9 +64,14 @@ flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_c
   }
 
   # write the list of task scripts
-  fileConn <- file(paste(flock_run_dir, '/',task.dir,'/task_dirs.txt', sep=''))
+  taskset.file <- paste(flock_run_dir, '/',task.dir,'/task_dirs.txt', sep='')
+  fileConn <- file(taskset.file)
   #print(created.jobs);
   #print(unlist(created.jobs));
   writeLines(unlist(created.jobs), fileConn)
   close(fileConn)
+
+  if(!is.null(flock_notify_command)) {
+    system(paste(flock_notify_command, " taskset ", flock_run_dir, " ", taskset.file, sep=''))
+  }
 }

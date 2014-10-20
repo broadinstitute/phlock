@@ -211,16 +211,17 @@ class AbstractQueue(object):
         self.last_estimate = None
         self.listener = listener
 
-    def submit(self, run_id, task, is_scatter):
-        d = task.full_path
+    def submit(self, run_id, task_full_path, is_scatter):
+        self.clean_task_dir(task_full_path)
+        d = task_full_path
 
         stdout = "%s/stdout.txt" % d
         stderr = "%s/stderr.txt" % d
         script_to_execute = "%s/task.sh" % d
 
-        script_to_execute, stdout, stderr = self.listener.presubmit(run_id, task, script_to_execute, stdout, stderr)
+        script_to_execute, stdout, stderr = self.listener.presubmit(run_id, task_full_path, script_to_execute, stdout, stderr)
 
-        self.add_to_queue(run_id, task, is_scatter, script_to_execute, stdout, stderr)
+        self.add_to_queue(task_full_path, is_scatter, script_to_execute, stdout, stderr)
 
     def get_last_estimate(self):
         return self.last_estimate
@@ -233,8 +234,8 @@ class AbstractQueue(object):
         self.last_estimate = self.cache.update_estimate(tasks)
         return tasks
 
-    def clean_task_dir(self, task):
-        for fn in ["%s/stdout.txt" % task.full_path, "%s/stderr.txt" % task.full_path]:
+    def clean_task_dir(self, task_full_path):
+        for fn in ["%s/stdout.txt" % task_full_path, "%s/stderr.txt" % task_full_path]:
             if os.path.exists(fn):
                 for i in xrange(20):
                     dest = "%s.%d" % (fn, i)
@@ -244,18 +245,17 @@ class AbstractQueue(object):
 
 
 class JobListener(object):
-    def task_submitted(self, run_id, task_dir, external_id):
+    def task_submitted(self, task_dir, external_id):
         with open("%s/job_id.txt" % task_dir, "w") as fd:
             fd.write(external_id)
 
-    def presubmit(self, run_id, task, task_script, stdout, stderr):
+    def presubmit(self, run_id, task_full_path, task_script, stdout, stderr):
         return (task_script, stdout, stderr)
 
 import xmlrpclib
 
 class ConsolidatedMonitor(JobListener):
-    def __init__(self, port, flock_home):
-        endpoint_url = "http://%s:%d" % (socket.gethostname(), port)
+    def __init__(self, endpoint_url, flock_home):
         self.endpoint_url = endpoint_url
         self.flock_home = flock_home
         self.service = xmlrpclib.ServerProxy(endpoint_url)
@@ -264,12 +264,12 @@ class ConsolidatedMonitor(JobListener):
         version = self.service.get_version()
         assert version != None
 
-    def task_submitted(self, run_id, task_dir, external_id):
-        JobListener.task_submitted(self, run_id, task_dir, external_id)
-        self.service.task_created(run_id, task_dir, external_id)
+    def task_submitted(self, task_dir, external_id):
+        JobListener.task_submitted(self, task_dir, external_id)
+        self.service.task_submitted(task_dir, external_id)
 
-    def presubmit(self, run_id, task, task_script, stdout, stderr):
-        d = task.full_path
+    def presubmit(self, run_id, task_full_path, task_script, stdout, stderr):
+        d = task_full_path
         script_to_execute = "%s/wrapped_task.sh" % d
         with open(script_to_execute, "w") as fd:
             fd.write("set -e\n"
@@ -301,13 +301,13 @@ class LocalQueue(AbstractQueue):
     def get_jobs_from_external_queue(self):
         return {}
 
-    def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout, stderr):
-        d = task.full_path
+    def add_to_queue(self, task_full_path, is_scatter, script_to_execute, stdout, stderr):
+        d = task_full_path
         cmd = "cd %s ; bash %s >> %s 2>> %s" % (self.workdir, script_to_execute, stdout, stderr)
         if cmd in self._ran:
             raise Exception("Already ran %s once" % cmd)
         self.system(cmd, ignore_retcode=True)
-        self._extern_ids[task.task_dir] = str(len(self._extern_ids))
+        self._extern_ids[task_full_path] = str(len(self._extern_ids))
         self._ran.add(cmd)
 
     def kill(self, task):
@@ -360,8 +360,8 @@ class LSFQueue(AbstractQueue):
                 active_jobs[job_id] = s
         return active_jobs
 
-    def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout, stderr):
-        d = task.full_path
+    def add_to_queue(self, task_full_path, is_scatter, script_to_execute, stdout, stderr):
+        d = task_full_path
         cmd = ["bsub", "-o", stdout, "-e", stderr, "-cwd", self.workdir]
         if is_scatter:
             cmd.extend(self.bsub_options)
@@ -381,7 +381,7 @@ class LSFQueue(AbstractQueue):
             raise Exception("Could not parse output from bsub: %s" % stdout)
 
         lsf_job_id = m.group(1)
-        self.listener.task_submitted(run_id, d, self.external_id_prefix + lsf_job_id)
+        self.listener.task_submitted(d, self.external_id_prefix + lsf_job_id)
 
     def kill(self, task):
         raise Exception("bkill %s" % task.external_id)
@@ -418,8 +418,8 @@ class SGEQueue(AbstractQueue):
                 active_jobs[job_id] = QUEUED_UNKNOWN
         return active_jobs
 
-    def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout_path, stderr_path):
-        d = task.full_path
+    def add_to_queue(self, task_full_path, is_scatter, script_to_execute, stdout_path, stderr_path):
+        d = task_full_path
 
         task_path_comps = d.split("/")
         task_name = task_path_comps[-1]
@@ -447,7 +447,7 @@ class SGEQueue(AbstractQueue):
             raise Exception("Could not parse output from qsub: %s" % stdout)
 
         sge_job_id = m.group(1)
-        self.listener.task_submitted(run_id, d, self.external_id_prefix + sge_job_id)
+        self.listener.task_submitted(d, self.external_id_prefix + sge_job_id)
 
     def kill(self, tasks):
         for batch in divide_into_batches(tasks, 100):
@@ -494,8 +494,8 @@ class LocalBgQueue(AbstractQueue):
                 active_jobs[pid] = RUNNING
         return active_jobs
 
-    def add_to_queue(self, run_id, task, is_scatter, script_to_execute, stdout_path, stderr_path):
-        d = task.full_path
+    def add_to_queue(self, task_full_path, is_scatter, script_to_execute, stdout_path, stderr_path):
+        d = task_full_path
         stdout = open(stdout_path, "a")
         stderr = open(stderr_path, "a")
         cmd = ["bash", script_to_execute]
@@ -504,7 +504,7 @@ class LocalBgQueue(AbstractQueue):
         stdout.close()
         stderr.close()
 
-        self.listener.task_submitted(run_id, d, self.external_id_prefix + str(handle.pid))
+        self.listener.task_submitted(d, self.external_id_prefix + str(handle.pid))
 
     def kill(self, task):
         raise Exception("bkill %s" % task.external_id)
@@ -521,9 +521,10 @@ def dump_file(filename):
 
 
 class Flock(object):
-    def __init__(self, job_queue, flock_home):
+    def __init__(self, job_queue, flock_home, notify_command):
         self.job_queue = job_queue
         self.flock_home = flock_home
+        self.notify_command = notify_command
 
     def system(self, cmd, ignore_retcode=False):
         log.info("EXEC %s", repr(cmd))
@@ -561,7 +562,7 @@ class Flock(object):
             log.warn("Run failed (%d tasks failed). Exitting", len(failures))
             sys.exit(1)
 
-    def run(self, run_id, script_body, wait, maxsubmit, test_job_count):
+    def run(self, run_id, script_body, wait, maxsubmit, test_job_count, no_poll=False):
         run_dir = os.path.abspath(run_id)
         if os.path.exists(run_id):
             log.error("\"%s\" already exists. Aborting.", run_id)
@@ -579,6 +580,10 @@ class Flock(object):
             fd.write("flock_version <- c(%s);\n" % ", ".join(FLOCK_VERSION.split(".")))
             fd.write("flock_run_dir <- '%s';\n" % (run_dir))
             fd.write("flock_home <- '%s';\n" % (self.flock_home))
+            if self.notify_command:
+                fd.write("flock_notify_command <- '%s';\n" % self.notify_command)
+            else:
+                fd.write("flock_notify_command <- NULL;\n")
 
             fd.write("""fileConn<-file(flock_starting_file)
       writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
@@ -599,11 +604,12 @@ class Flock(object):
         with open("%s/tasks-init/task_dirs.txt" % run_id, "w") as fd:
             fd.write("1 tasks-init/scatter\n")
 
-        self.poll_once(run_id, maxsubmit)
-        if wait:
-            self.wait_for_completion(run_id, maxsubmit)
-        else:
-            print "Jobs are running, but --nowait was specified, so exiting"
+        if not no_poll:
+            self.poll_once(run_id, maxsubmit)
+            if wait:
+                self.wait_for_completion(run_id, maxsubmit)
+            else:
+                print "Jobs are running, but --nowait was specified, so exiting"
 
     def print_task_table(self, rows, estimate, summarize=True):
         if summarize:
@@ -661,18 +667,20 @@ class Flock(object):
         with open(run_id + "/tasks/last_status.json", "w") as fd:
             fd.write(json.dumps(jobs_per_status))
 
-    def poll_once(self, run_id, maxsubmit=1000000):
+    def are_tasks_all_complete(self, tasks):
         is_complete = True
+        for task in tasks:
+            if task.status in [CREATED, SUBMITTED, UNKNOWN, QUEUED_UNKNOWN, RUNNING]:
+                is_complete = False
+        return is_complete
+
+    def poll_once(self, run_id, maxsubmit=1000000):
         submitted_count = 0
         while True:
             tasks = self.check_and_print(run_id)
 
             # persist a snapshot of the current state in a json object
             self.write_json_summary(tasks, run_id)
-
-            for task in tasks:
-                if task.status in [CREATED, SUBMITTED, UNKNOWN, QUEUED_UNKNOWN, RUNNING]:
-                    is_complete = False
 
             active_task_count = len([t for t in tasks if t.status in [SUBMITTED, RUNNING]])
             maxsubmit_now = max(0, maxsubmit - active_task_count)
@@ -681,13 +689,13 @@ class Flock(object):
                 created_tasks = created_tasks[:maxsubmit_now]
 
             for task in created_tasks:
-                self.job_queue.clean_task_dir(task)
-                self.job_queue.submit(run_id, task, "scatter" in task.task_dir)
+                self.job_queue.submit(run_id, task.full_path, "scatter" in task.task_dir)
 
             submitted_count += len(created_tasks)
             if len(created_tasks) == 0:
                 break
 
+        is_complete = self.are_tasks_all_complete(tasks)
         return is_complete, submitted_count
 
     def poll(self, run_id, wait, maxsubmit):
@@ -787,3 +795,5 @@ def load_config(filenames, run_id, overrides):
     return Config(**config)
 
 
+def get_flock_home():
+    return os.path.dirname(os.path.realpath(__file__))

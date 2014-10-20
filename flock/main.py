@@ -54,7 +54,9 @@ def main(cmd_line_args=None):
     run_id = config.run_id
 
     if config.monitor_port != None:
-        listener = flock.ConsolidatedMonitor(int(config.monitor_port), flock_home)
+        import socket
+        endpoint_url = "http://%s:%d" % (socket.gethostname(), int(config.monitor_port))
+        listener = flock.ConsolidatedMonitor(endpoint_url, flock_home)
     else:
         listener = flock.JobListener()
 

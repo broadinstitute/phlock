@@ -15,11 +15,13 @@ def main(args):
 
     if args[1] == "started":
         node_name = socket.gethostname()
-        service.task_started(run_id, task_dir, node_name)
+        service.task_started(task_dir, node_name)
     elif args[1] == "failed":
-        service.task_failed(run_id, task_dir)
-    elif args[1] == "failed":
-        service.task_completed(run_id, task_dir)
+        service.task_failed(task_dir)
+    elif args[1] == "completed":
+        service.task_completed(task_dir)
+    elif args[1] == "taskset":
+        service.taskset_created(run_id, task_dir)
     else:
         raise Exception("expected either started, completed or failed")
 
