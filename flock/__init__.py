@@ -320,6 +320,8 @@ class LocalQueue(AbstractQueue):
 
 
 def split_options(s):
+    if s == None:
+        return []
     s = s.strip()
     if len(s) == 0:
         return []
