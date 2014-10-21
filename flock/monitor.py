@@ -7,6 +7,7 @@ import logging
 import threading
 import socket
 import traceback
+import json
 
 log = logging.getLogger("monitor")
 
@@ -26,12 +27,15 @@ DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id INTEGER, task_dir STRING prima
 # Make task_dir into primary key
 # make status into index
 
-READY = 1
-SUBMITTED = 2
-STARTED = 3
-COMPLETED = 4
+WAITING = 1
+READY = 2
+SUBMITTED = 3
+STARTED = 4
+COMPLETED = 5
 FAILED = -1
 MISSING = -2
+
+status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED", COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING"}
 
 class TransactionContext:
     def __init__(self, connection, lock):
@@ -73,6 +77,21 @@ class TaskStore:
             self._active_transaction = TransactionContext(self._connection, self._lock)
         return self._active_transaction
 
+    def get_runs(self):
+        with self.transaction() as db:
+            db.execute("SELECT run_id, run_dir, name, parameters FROM RUNS")
+            rows = db.fetchall()
+            result = []
+            for run_id, run_dir, name, parameters in rows:
+                if parameters != None:
+                    parameters = json.loads(parameters)
+
+                db.execute("SELECT status, count(1) FROM TASKS WHERE run_id = ? GROUP BY status", [run_id])
+                summary = {}
+                for status, count in db.fetchall():
+                    summary[status_code_to_name[status]] = count
+                result.append(dict(run_dir=run_dir, name=name, parameters=parameters, status=summary))
+
     def get_version(self):
         return "1"
 
@@ -104,7 +123,7 @@ class TaskStore:
                     if external_id != None:
                         status = SUBMITTED
                     else:
-                        status = READY
+                        status = WAITING
                 db.execute("INSERT INTO TASKS (run_id, task_dir, status, try_count, group_number, external_id) values (?, ?, ?, 0, ?, ?)", [run_id, os.path.join(run_dir, task_dir), status, group, external_id])
 
             self._cv_created.notify_all()
@@ -136,6 +155,13 @@ class TaskStore:
                 log.warn("task_failed(%s) called, but no record in db", task_dir)
         return True
 
+    def set_task_status(self, task_dir, status):
+        with self.transaction() as db:
+            db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [status, task_dir])
+            if db.rowcount == 0:
+                log.warn("set_task_status(%s, %s) called, but no record in db", task_dir, status)
+        return True
+
     def task_missing(self, task_dir):
         with self.transaction() as db:
             db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [MISSING, task_dir])
@@ -152,7 +178,7 @@ class TaskStore:
 
     def node_disappeared(self, node_name):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE node_name = ?", [READY, node_name])
+            db.execute("UPDATE TASKS SET status = ? WHERE node_name = ?", [WAITING, node_name])
         return True
 
     def find_tasks_by_status(self, status, limit=None):
@@ -211,25 +237,16 @@ def identify_tasks_which_disappeared(store, queue):
 
 def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
     print "submit_created_tasks"
-    run_cache = {}
 
     submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
-    tasks = store.find_tasks_by_status(READY)
-    print "created tasks: %s" % repr(tasks)
-    for run_id, task_dir, group in tasks:
-        if submitted_count >= max_submitted:
-            break
-
-        if not (run_id in run_cache):
+    # process all the waiting to make sure they've met their requirements
+    count_cache = {}
+    for run_id, task_dir, group in store.find_tasks_by_status(WAITING):
+        if not (run_id in count_cache):
             counts_per_run = store.count_unfinished_tasks_by_group_number(run_id)
-
-            run_dir, config_path = store.get_config_path(run_id)
-            config = flock.load_config([config_path], None, {})
-            queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
-            run_cache[run_id] = (queue, counts_per_run)
-
-        queue, counts = run_cache[run_id]
+            count_cache[run_id] = counts_per_run
+        counts = count_cache[run_id]
 
         # check to make sure that we've completed everything in groups earlier then this one
         all_okay = True
@@ -238,10 +255,25 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
                 all_okay = False
 
         if all_okay:
-            queue.submit(run_id, os.path.join(run_dir, task_dir), "scatter" in task_dir)
-            submitted_count += 1
+            store.set_task_status(task_dir, READY)
         else:
-            print "Could not run %s because needs to wait for another job"
+            log.debug("Could not run %s because needs to wait for another job", task_dir)
+
+    # submit any ready tasks
+    submit_count = max(0, max_submitted-submitted_count)
+    tasks = store.find_tasks_by_status(READY, limit=submit_count)
+    queue_cache = {}
+    for run_id, task_dir, group in tasks:
+
+        if not (run_id in queue_cache):
+            run_dir, config_path = store.get_config_path(run_id)
+            config = flock.load_config([config_path], None, {})
+            queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
+            queue_cache[run_id] = queue
+
+        queue = queue_cache[run_id]
+
+        queue.submit(run_id, os.path.join(run_dir, task_dir), "scatter" in task_dir)
 
 
 def main_loop(endpoint_url, flock_home, store, localQueue = True):
@@ -287,7 +319,7 @@ def main():
     main_loop_thread.start()
     server = SimpleXMLRPCServer(("0.0.0.0", port))
     print "Listening on port %d..." % port
-    for method in ["run_created", "taskset_created", "task_submitted", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version"]:
+    for method in ["run_created", "taskset_created", "task_submitted", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
 
     server.serve_forever()
