@@ -91,6 +91,7 @@ class TaskStore:
                 for status, count in db.fetchall():
                     summary[status_code_to_name[status]] = count
                 result.append(dict(run_dir=run_dir, name=name, parameters=parameters, status=summary))
+            return result
 
     def get_version(self):
         return "1"
