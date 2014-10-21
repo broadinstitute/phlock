@@ -316,8 +316,9 @@ def main():
 
     main_loop_thread = threading.Thread(target=lambda: main_loop(endpoint_url, flock_home, store))
     main_loop_thread.daemon = True
-    main_loop_thread.start()
     server = SimpleXMLRPCServer(("0.0.0.0", port))
+    main_loop_thread.start()
+
     print "Listening on port %d..." % port
     for method in ["run_created", "taskset_created", "task_submitted", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
