@@ -82,8 +82,9 @@ def read_task_dirs(run_id):
 
 
 def finished_successfully(run_id, task_dir):
-    finished = os.path.exists("%s/%s/finished-time.txt" % (run_id, task_dir))
-    # print "is_finished %s/finished-time.txt -> %s" % (task_dir, finished)
+    if run_id != None:
+        task_dir = os.path.join(run_id, task_dir)
+    finished = os.path.exists(os.path.join(task_dir, "finished-time.txt"))
     return finished
 
 
@@ -191,18 +192,22 @@ def find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, cac
 
     return tasks
 
+def get_external_id(run_id, task_dir):
+    job_id_file = "%s/%s/job_id.txt" % (run_id, task_dir)
+    if os.path.exists(job_id_file):
+        with open(job_id_file) as fd:
+            job_id = fd.read()
+            return job_id
+    return None
 
 @timeit
 def read_external_ids(run_id, task_dirs, expected_prefix):
     external_ids = collections.defaultdict(lambda: [])
     for task_dir in task_dirs:
-        job_id_file = "%s/%s/job_id.txt" % (run_id, task_dir)
-        if os.path.exists(job_id_file):
-            with open(job_id_file) as fd:
-                job_id = fd.read()
-                assert job_id.startswith(expected_prefix), "Job ID was expected to be %s but was %s" % (
-                expected_prefix, job_id)
-                external_ids[task_dir] = job_id[len(expected_prefix):]
+        job_id = get_external_id(run_id, task_dir)
+        if job_id != None:
+            assert job_id.startswith(expected_prefix), "Job ID was expected to be %s but was %s" % (expected_prefix, job_id)
+            external_ids[task_dir] = job_id[len(expected_prefix):]
     return external_ids
 
 class AbstractQueue(object):

@@ -1,11 +1,12 @@
+import sys
 import os
 import sqlite3
-import sys
 import __init__ as flock
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 import logging
 import threading
-import collections
+import socket
+import traceback
 
 log = logging.getLogger("monitor")
 
@@ -16,6 +17,7 @@ __author__ = 'pmontgom'
 DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id INTEGER, task_dir STRING primary key, status INTEGER, try_count INTEGER, node_name STRING, external_id STRING, group_number INTEGER )",
  "CREATE INDEX IDX_RUN_ID ON TASKS (run_id)",
  "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
+ "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
  "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)",
  "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING, name STRING, flock_config_path STRING, parameters STRING)",
  "CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)"]
@@ -24,13 +26,12 @@ DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id INTEGER, task_dir STRING prima
 # Make task_dir into primary key
 # make status into index
 
-STARTED = 1
+READY = 1
+SUBMITTED = 2
+STARTED = 3
+COMPLETED = 4
 FAILED = -1
-SUCCESS = 2
-SUBMITTED = 20
-READY = 100
-CREATED = 105
-
+MISSING = -2
 
 class TransactionContext:
     def __init__(self, connection, lock):
@@ -95,7 +96,16 @@ class TaskStore:
             run_id = db.fetchall()[0][0]
 
             for group, task_dir in task_dirs:
-                db.execute("INSERT INTO TASKS (run_id, task_dir, status, try_count, group_number) values (?, ?, ?, 0, ?)", [run_id, os.path.join(run_dir, task_dir), CREATED, group])
+                if flock.finished_successfully(run_dir, task_dir):
+                    status = COMPLETED
+                    external_id = None
+                else:
+                    external_id = flock.get_external_id(run_dir, task_dir)
+                    if external_id != None:
+                        status = SUBMITTED
+                    else:
+                        status = READY
+                db.execute("INSERT INTO TASKS (run_id, task_dir, status, try_count, group_number, external_id) values (?, ?, ?, 0, ?, ?)", [run_id, os.path.join(run_dir, task_dir), status, group, external_id])
 
             self._cv_created.notify_all()
         return True
@@ -126,9 +136,16 @@ class TaskStore:
                 log.warn("task_failed(%s) called, but no record in db", task_dir)
         return True
 
+    def task_missing(self, task_dir):
+        with self.transaction() as db:
+            db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [MISSING, task_dir])
+            if db.rowcount == 0:
+                log.warn("task_missing(%s) called, but no record in db", task_dir)
+        return True
+
     def task_completed(self, task_dir):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [SUCCESS, task_dir])
+            db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [COMPLETED, task_dir])
             if db.rowcount == 0:
                 log.warn("task_completed(%s) called, but no record in db", task_dir)
         return True
@@ -150,11 +167,17 @@ class TaskStore:
             recs = db.fetchall()
         return recs
 
+    def find_external_ids_of_submitted(self):
+        with self.transaction() as db:
+            db.execute("SELECT task_dir, external_id FROM tasks WHERE status in (?, ?)", [STARTED, SUBMITTED])
+            recs = db.fetchall()
+        return recs
+
     def count_unfinished_tasks_by_group_number(self, run_id):
         result = {}
         with self.transaction() as db:
             db.execute("SELECT group_number, count(*) FROM tasks WHERE status not in (?, ?) AND run_id = ? group by group_number",
-                       [FAILED, SUCCESS, run_id])
+                       [FAILED, COMPLETED, run_id])
             for number, count in db.fetchall():
                 result[number] = count
         return result
@@ -164,26 +187,35 @@ class TaskStore:
             db.execute("SELECT run_dir, flock_config_path FROM RUNS WHERE run_id = ?", [run_id])
             return db.fetchall()[0]
 
-def identify_tasks_which_disappeared():
+def identify_tasks_which_disappeared(store, queue):
     # two tasks: 1. identify runs which our db reports as running, but backend queue is no longer reporting as running
 
-    external_ids_of_running = get_external_ids_of_running()
-    external_ids_of_actually_running = get_external_ids_of_actually_running()
+    external_id_to_task_dir = dict([(external_id, task_dir) for task_dir, external_id in store.find_external_ids_of_submitted()])
+
+    external_ids_of_those_we_think_are_submitted = set(external_id_to_task_dir.keys())
+    external_ids_of_actually_in_queue = set(queue.get_jobs_from_external_queue().keys())
 
     # identify tasks which transitioned from running -> not running
     # and call these "missing" (assuming the db still claims these are running).  All other transitions
     # should already be performed through other means.
 
-    disappeared = external_ids_of_running - external_ids_of_actually_running
+    disappeared_external_ids = external_ids_of_those_we_think_are_submitted - external_ids_of_actually_in_queue
+    for external_id in disappeared_external_ids:
+        task_dir = external_id_to_task_dir[external_id]
 
-def submit_created_tasks(listener, store, max_submitted=100):
-    localQueue = True
+        # check the filesystem to see if it really did succeed and we just missed the notification
+        if flock.finished_successfully(None, task_dir):
+            store.task_completed(task_dir)
+        else:
+            store.task_missing(task_dir)
+
+def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
     print "submit_created_tasks"
     run_cache = {}
 
     submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
-    tasks = store.find_tasks_by_status(CREATED)
+    tasks = store.find_tasks_by_status(READY)
     print "created tasks: %s" % repr(tasks)
     for run_id, task_dir, group in tasks:
         if submitted_count >= max_submitted:
@@ -194,10 +226,7 @@ def submit_created_tasks(listener, store, max_submitted=100):
 
             run_dir, config_path = store.get_config_path(run_id)
             config = flock.load_config([config_path], None, {})
-            if localQueue:
-                queue = flock.LocalBgQueue(listener, config.workdir)
-            else:
-                queue = flock.SGEQueue(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
+            queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
             run_cache[run_id] = (queue, counts_per_run)
 
         queue, counts = run_cache[run_id]
@@ -215,18 +244,22 @@ def submit_created_tasks(listener, store, max_submitted=100):
             print "Could not run %s because needs to wait for another job"
 
 
-def main_loop(endpoint_url, flock_home, store):
+def main_loop(endpoint_url, flock_home, store, localQueue = True):
+
+    if localQueue:
+        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: flock.LocalBgQueue(listener, workdir)
+    else:
+        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: flock.SGEQueue(listener, qsub_options, scatter_qsub_options, name, workdir)
+
     listener = flock.ConsolidatedMonitor(endpoint_url, flock_home)
     counter = 0
+    t_queue = queue_factory(None, None, None, None, None)
     while True:
-        submit_created_tasks(listener, store)
-        #if counter % 100 == 0:
-        #    identify_tasks_which_disappeared()
+        submit_created_tasks(listener, store, queue_factory)
+        if counter % 100 == 0:
+            identify_tasks_which_disappeared(store, t_queue)
         store.wait_for_created(10)
         counter += 1
-
-import socket
-import traceback
 
 def make_function_wrapper(fn):
     def wrapped(*args, **kwargs):
