@@ -276,7 +276,7 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
         queue.submit(run_id, os.path.join(run_dir, task_dir), "scatter" in task_dir)
 
 
-def main_loop(endpoint_url, flock_home, store, localQueue = True):
+def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted=100):
 
     if localQueue:
         queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: flock.LocalBgQueue(listener, workdir)
@@ -287,7 +287,7 @@ def main_loop(endpoint_url, flock_home, store, localQueue = True):
     counter = 0
     t_queue = queue_factory(None, None, None, None, None)
     while True:
-        submit_created_tasks(listener, store, queue_factory)
+        submit_created_tasks(listener, store, queue_factory, max_submitted=max_submitted)
         if counter % 100 == 0:
             identify_tasks_which_disappeared(store, t_queue)
         store.wait_for_created(10)
