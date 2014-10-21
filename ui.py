@@ -280,77 +280,57 @@ def get_master_info(ec2):
 
     return master, config['KEY_LOCATION']
 
-def create_job_tag_set(job):
-    tags = set()
-    for k,v in job.items():
-        if not ( k in ["job_name", "job_dir", "status"] ):
-            tags.add("%s=%s" % (k, repr(v)))
-    return tags
+import adhoc
 
-@app.route("/list-jobs")
-def list_jobs():
-    filter_tag = None
+CONFIGS = { "bulk": [ {"name":["bulk"], "targetDataset": ["ach2.12"], "targetDataType": ["gene solutions","GS t/h lv2","GS t/h lv3"], "celllineSubset": ["all","solid"],
+  "predictiveFeatureSubset": ["top100", "all", "single", "bydomain", "byseqparalog", "physicalinteractors"],
+  "predictiveFeatures": [ ["GE"], ["CN"], ["MUT"], ["GE", "CN", "MUT"] ] } ] }
 
-    if "tag" in request.values:
-        filter_tag = request.values['tag']
-        if filter_tag == "":
-            filter_tag = None
+def get_jobs_from_remote():
+    import xmlrpclib
+    service = xmlrpclib.ServerProxy("http://localhost:4422")    
+    return service.get_runs()
 
-    master, key_location = get_master_info(get_ec2_connection())
 
-    cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
-                        "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
-                        "-i", key_location, 
-                        "ubuntu@" + master.dns_name, "/tmp/cluster_scripts/get_runs.py " + TARGET_ROOT]
+@app.route("/job-dashboard")
+def job_dashboard():
+    filter_tags = request.values.getlist("tag")
+    config_name = request.values.get("config_name")
 
-    p = subprocess.Popen(cmd,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
-    stdout, stderr = p.communicate()
-    try:
-        jobs = json.loads(stdout)
-    except ValueError:
-        return "Could not parse:\n"+stdout+"\n"+stderr
+    existing_jobs = get_jobs_from_remote()
 
-    tag_universe = set()
-    filtered_jobs = []
-    for job in jobs:
-        job_tag_set = create_job_tag_set(job)
-        if filter_tag is None or filter_tag in job_tag_set:
-            filtered_jobs.append(job)
+    if config_name == "" or config_name == None:
+        config = None
+        config_name = ""
+    else:
+        config = CONFIGS[config_name]
 
-        tag_universe.update(job_tag_set)
+    if config != None:
+        # compute set of all columns used to define a unique job
+        config_property_names = set()
+        for x in config:
+            config_property_names.update(x.keys())
 
-    column_names_set = collections.defaultdict(lambda: set())
-    for job in filtered_jobs:
-        for k, v in job.items():
-            column_names_set[k].add(str(v))
+        all_configs = adhoc.enumerate_configurations(config)
+        merged = adhoc.find_each_in_a(config_property_names, all_configs, [x['parameters'] for x in existing_jobs])
+        flattened = adhoc.flatten(merged)
+    else:
+        flattened = adhoc.from_existing(existing_jobs)
 
-    column_names = []
-    fixed_values = []
-    for k, values in column_names_set.items():
-        if ( k in ["job_name", "job_dir", "status"] ):
-            continue
+    flattened = adhoc.find_with_tags(flattened, filter_tags)
 
-        if len(values) > 1:
-            column_names.append(k)
-        else:
-            fixed_values.append( (k, list(values)[0]) )
+    summary = adhoc.summarize(flattened)
+    for x in ["run_id", "job_dir", "status", "job_name"]:
+        if x in summary:
+            del summary[x]
 
-    fixed_values.sort()
-    column_names.sort()
+    fixed_values, column_names = adhoc.factor_out_common(summary)
+    tag_universe = adhoc.get_all_tags(summary)
 
-    tag_universe = list(tag_universe)
-    tag_universe.sort()
-
-    # convert status into a map if possible
-    for job in filtered_jobs:
-        try:
-            job['parsed_status'] = json.loads(job['status'])
-        except ValueError:
-            pass
-
-    return flask.render_template("list-jobs.html", jobs=filtered_jobs,
-                                 column_names=column_names, tags=tag_universe, fixed_values=fixed_values )
+    return flask.render_template("job-dashboard.html", jobs=flattened,
+                                 column_names=column_names, tags=tag_universe,
+                                 fixed_values=fixed_values.items(), current_filter_tags=filter_tags,
+                                 config_name=config_name, config_names=CONFIGS.keys())
 
 job_pattern = re.compile("\\d+-\\d+")
 
@@ -639,7 +619,7 @@ if __name__ == "__main__":
     parser.add_argument('--config', dest="config_path", help='config file to use', default=os.path.expanduser("~/.clusterui.config"))
     args = parser.parse_args()
 
-    app.config.update(LOG_FILE='clusterui.log', DEBUG=True, PORT=9935, FLOCK_PATH="/xchip/flock/bin/flock")
+    app.config.update(LOG_FILE='clusterui.log', DEBUG=True, PORT=9935, FLOCK_PATH="/xchip/flock/bin/phlock")
     app.config.from_pyfile(args.config_path)
     load_starcluster_config(app.config)
 
