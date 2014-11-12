@@ -59,7 +59,7 @@ class TaskStatusCache:
         return time.time() - t > 5
 
     def _finished_successfully(self, run_id, task_dir):
-        if not (task_dir in self.finished_successfully) and finished_successfully(run_id, task_dir):
+        if not (task_dir in self.finished_successfully) and flock.finished_successfully(run_id, task_dir):
             self.finished_successfully.add(task_dir)
         return task_dir in self.finished_successfully
 
@@ -112,10 +112,10 @@ class AbstractQueue(object):
         return self.last_estimate
 
     def find_tasks(self, run_id):
-        task_dirs, job_deps = read_task_dirs(run_id)
+        task_dirs, job_deps = flock.read_task_dirs(run_id)
         queued_job_states = self.get_jobs_from_external_queue()
-        external_ids = read_external_ids(run_id, task_dirs, self.external_id_prefix)
-        tasks = find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
+        external_ids = flock.read_external_ids(run_id, task_dirs, self.external_id_prefix)
+        tasks = flock.find_tasks(run_id, external_ids, queued_job_states, task_dirs, job_deps, self.cache)
         self.last_estimate = self.cache.update_estimate(tasks)
         return tasks
 

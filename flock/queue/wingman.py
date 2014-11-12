@@ -1,6 +1,10 @@
 import xmlrpclib
+import flock
 
-class ConsolidatedMonitor(JobListener):
+class ConsolidatedMonitor(flock.JobListener):
+    def get_notify_command(self):
+        return "%s/notify.py %s" % (self.flock_home, self.endpoint_url)
+            
     def __init__(self, endpoint_url, flock_home):
         self.endpoint_url = endpoint_url
         self.flock_home = flock_home

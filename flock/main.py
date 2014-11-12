@@ -88,7 +88,7 @@ def main(cmd_line_args=None):
 
     log.info("Writing run to \"%s\"", run_id)
 
-    f = flock.Flock(job_queue, flock_home)
+    f = flock.Flock(job_queue, flock_home, listener.get_notify_command())
     job_queue.system = f.system
 
     if command == "run":
@@ -96,7 +96,7 @@ def main(cmd_line_args=None):
             log.warn("%s already exists -- removing before running job", run_id)
             shutil.rmtree(run_id)
 
-        f.run(run_id, config.invoke, not args.nowait, args.maxsubmit, config.environment_variables, test_job_count)
+        f.run(run_id, config.invoke, not args.nowait, args.maxsubmit, test_job_count, config.environment_variables)
     elif command == "kill":
         f.kill(run_id)
     elif command == "check":

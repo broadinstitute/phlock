@@ -4,13 +4,9 @@ import collections
 import os
 import glob
 import subprocess
-import re
 import time
 import logging
-import socket
 import json
-import base64
-import hashlib
 
 FLOCK_VERSION = "1.0"
 
@@ -126,6 +122,9 @@ def read_external_ids(run_id, task_dirs, expected_prefix):
 
 
 class JobListener(object):
+    def get_notify_command(self):
+        return None
+
     def task_submitted(self, task_dir, external_id):
         with open("%s/job_id.txt" % task_dir, "w") as fd:
             fd.write(external_id)
