@@ -105,22 +105,21 @@ class TaskStore:
     def get_version(self):
         return "1"
 
-    def run_created(self, run_id, name, config_path, parameters):
+    def run_created(self, run_dir, name, config_path, parameters):
         with self.transaction() as db:
-            db.execute("INSERT INTO RUNS (run_dir, name, flock_config_path, parameters) VALUES (?, ?, ?, ?)", [run_id, name, config_path, parameters])
+            db.execute("INSERT INTO RUNS (run_dir, name, flock_config_path, parameters) VALUES (?, ?, ?, ?)", [run_dir, name, config_path, parameters])
         return True
 
-    def run_submitted(self, run_id, name, config_path, parameters):
-        self.run_created(run_id, name, config_path, parameters)
+    def run_submitted(self, run_dir, name, config_path, parameters):
+        self.run_created(run_dir, name, config_path, parameters)
 
         notify_command = format_notify_command(self.flock_home, self.endpoint_url)
-        config = flock_config.load_config([config_path], run_id, {})
-        task_definition_path = flock.write_files_for_running(self.flock_home, notify_command, run_id, config.invoke, None, config.environment_variables)
-        self.taskset_created(run_id, task_definition_path)
-
-        return True
+        config = flock_config.load_config([config_path], run_dir, {})
+        task_definition_path = flock.write_files_for_running(self.flock_home, notify_command, run_dir, config.invoke, None, config.environment_variables)
+        return self.taskset_created(run_dir, task_definition_path)
 
     def taskset_created(self, run_dir, task_definition_path):
+        full_task_dir_paths = []
         task_dirs = []
         with open(task_definition_path) as fd:
             for line in fd.readlines():
@@ -144,16 +143,17 @@ class TaskStore:
                         status = SUBMITTED
                     else:
                         status = WAITING
-                db.execute("INSERT INTO TASKS (run_id, task_dir, status, try_count, group_number, external_id) values (?, ?, ?, 0, ?, ?)", [run_id, os.path.join(run_dir, task_dir), status, group, external_id])
+                full_task_dir_path = os.path.join(run_dir, task_dir)
+                db.execute("INSERT INTO TASKS (run_id, task_dir, status, try_count, group_number, external_id) values (?, ?, ?, 0, ?, ?)", [run_id, full_task_dir_path, status, group, external_id])
+                full_task_dir_paths.append(full_task_dir_path)
 
             self._cv_created.notify_all()
-        return True
+        return full_task_dir_paths
 
     def wait_for_created(self, timeout):
         self._lock.acquire()
         self._cv_created.wait(timeout)
         self._lock.release()
-
 
     def delete_run(self, run_dir):
         with self.transaction() as db:
