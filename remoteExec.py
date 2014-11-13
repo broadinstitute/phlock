@@ -46,10 +46,11 @@ def install_config(target_root, sha_code_dir, config_temp_file, timestamp):
     run("mkdir -p "+target_dir)
 
     # upload the config file and run via flock, after setting the working directory to be the current code dir
-    put(config_temp_file, target_dir+"/config")
+    remote_config = target_dir+"/config"
+    put(config_temp_file, remote_config)
 
     command = "bash "+target_dir+"/flock-wrapper.sh submit"
-    return sha_code_dir, target_dir, command
+    return sha_code_dir, target_dir, command, remote_config
 
 def install_wrapper_script(sha_code_dir, target_dir, flock_path):
     with tempfile.NamedTemporaryFile() as temp_file:
@@ -78,8 +79,12 @@ class EchoAndCapture(object):
         self.f.close()
 
 import json
+import xmlrpclib
 
 def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp, flock_path, sha, nowait):
+    endpoint_url = "http://localhost:3010"
+    service = xmlrpclib.ServerProxy(endpoint_url)
+
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
             sha_code_dir = deploy_code_from_git(repo, sha, branch)
@@ -90,18 +95,23 @@ def deploy(host, key_filename, repo, branch, config_file, target_root, json_para
                 fd.write(json.dumps(params))
 
         with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
-            working_dir, target_dir, command = install_config(target_root, sha_code_dir, config_file, timestamp)
+            working_dir, target_dir, command, remote_config = install_config(target_root, sha_code_dir, config_file, timestamp)
             if nowait == "nowait":
                 command += " --nowait"
+
             put(json_params, target_dir+"/config.json")
             with cd(working_dir):
                 install_wrapper_script(working_dir, target_dir, flock_path)
                 #stdout_capture = EchoAndCapture(target_dir+"/output.txt")
-                run(command)
+                #run(command)
                 #stdout_capture.close()
+
+            service.run_submitted(target_dir, timestamp, remote_config, json.dumps(params))
     finally:
         fabric.network.disconnect_all()
 
 if __name__ == "__main__":
     deploy(*sys.argv[1:])
+
+
 
