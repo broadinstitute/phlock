@@ -96,6 +96,11 @@ def test_failed_run_lifecycle():
     runs = store.get_runs()
     assert runs[0]['status']['FAILED'] == 1
 
+    store.retry_run(run_dir)
+    runs = store.get_runs()
+    assert runs[0]['status']['WAITING'] == 1
+
+
 @with_setup(setup_run_dir, cleanup_run_dir)
 def test_node_failure():
     store = wingman.TaskStore(temp_db, "flock_home", endpoint_url="http://invalid:2000")

@@ -47,7 +47,7 @@ def submit(endpoint_url, run_dir, config_path, name, delete_before_submit):
 
     if delete_before_submit:
         service.delete_run(run_dir)
-    service.run_submitted(run_dir, name, config_path, "")
+    service.run_submitted(run_dir, name, config_path, "{}")
 
 #    for dirname in glob.glob("%s/tasks*" % run_dir):
 #        fn = "%s/task_dirs.txt" % dirname

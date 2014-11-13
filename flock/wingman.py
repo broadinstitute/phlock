@@ -38,8 +38,10 @@ STARTED = 4
 COMPLETED = 5
 FAILED = -1
 MISSING = -2
+KILLED = -3
+KILL_PENDING = -4
 
-status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED", COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING"}
+status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED", COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING", KILLED: "KILLED", KILL_PENDING : "KILL_PENDING"}
 
 def format_notify_command(flock_home, endpoint_url):
     return "python %s/wingman_notify.py %s" % (flock_home, endpoint_url)
@@ -213,11 +215,44 @@ class TaskStore:
             db.execute("UPDATE TASKS SET status = ? WHERE node_name = ?", [WAITING, node_name])
         return True
 
+    def retry_run(self, run_dir):
+        with self.transaction() as db:
+            db.execute("SELECT run_id FROM RUNS WHERE run_dir = ?", [run_dir])
+            rows = db.fetchall()
+            if len(rows) == 1:
+                run_id = rows[0][0]
+
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILL_PENDING, run_id, SUBMITTED, STARTED])
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILLED, run_id, READY, WAITING])
+        return True
+
+    def kill_run(self, run_dir):
+        with self.transaction() as db:
+            db.execute("SELECT run_id FROM RUNS WHERE run_dir = ?", [run_dir])
+            rows = db.fetchall()
+            if len(rows) == 1:
+                run_id = rows[0][0]
+
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [WAITING, run_id, FAILED, KILLED])
+        return True
+
     def find_tasks_by_status(self, status, limit=None):
         if limit == 0:
             return []
 
         query = "SELECT run_id, task_dir, group_number FROM tasks WHERE status = ?"
+        if limit != None:
+            query += " limit %d" % limit
+        with self.transaction() as db:
+            db.execute(query, [status])
+            recs = db.fetchall()
+        return recs
+
+    def find_tasks_external_id_by_status(self, status, limit=None):
+        if limit == 0:
+            return []
+
+        query = "SELECT external_id FROM tasks WHERE status = ?"
         if limit != None:
             query += " limit %d" % limit
         with self.transaction() as db:
@@ -235,7 +270,7 @@ class TaskStore:
         result = {}
         with self.transaction() as db:
             db.execute("SELECT group_number, count(*) FROM tasks WHERE status not in (?, ?) AND run_id = ? group by group_number",
-                       [FAILED, COMPLETED, run_id])
+                       [KILLED, FAILED, COMPLETED, run_id])
             for number, count in db.fetchall():
                 result[number] = count
         return result
@@ -245,7 +280,20 @@ class TaskStore:
             db.execute("SELECT run_dir, flock_config_path FROM RUNS WHERE run_id = ?", [run_id])
             return db.fetchall()[0]
 
+def handle_kill_pending_tasks(store, queue, batch_size=10):
+    log.info("calling handle_kill_pending_tasks")
+    external_ids = store.find_tasks_external_id_by_status(KILL_PENDING, limit=batch_size)
+    if len(external_ids) > 0:
+        log.info("Killing tasks with external_ids: %s", repr(external_ids))
+        tasks = [flock.Task(None, external_id, None, None) for external_id in external_ids]
+        queue.kill(tasks)
+        # just let the jobs transition to MISSING in next periodic check.  Should we explictly mark these as killed?
+        # seems like many ways for that to fall out of sync with the backend queue if we set it to killed without checking
+        return True
+    return False
+
 def identify_tasks_which_disappeared(store, queue):
+    log.info("calling identify_tasks_which_disappeared")
     # two tasks: 1. identify runs which our db reports as running, but backend queue is no longer reporting as running
 
     external_id_to_task_dir = dict([(external_id, task_dir) for task_dir, external_id in store.find_external_ids_of_submitted()])
@@ -317,11 +365,17 @@ def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted
     counter = 0
     t_queue = queue_factory(None, None, None, "", "./")
     while True:
+        needed_to_kill_tasks = handle_kill_pending_tasks(store, t_queue)
         submit_created_tasks(listener, store, queue_factory, max_submitted=max_submitted)
+
         if counter % 100 == 0:
             identify_tasks_which_disappeared(store, t_queue)
-        store.wait_for_created(10)
-        counter += 1
+
+        # only sleep if we didn't have to kill any tasks.  If we did have to kill tasks, then
+        # don't sleep and immediately poll again in case there are more tasks to kill.
+        if not needed_to_kill_tasks:
+            store.wait_for_created(10)
+            counter += 1
 
 def make_function_wrapper(fn):
     def wrapped(*args, **kwargs):
@@ -354,7 +408,7 @@ def main():
     main_loop_thread.start()
 
     print "Listening on port %d..." % port
-    for method in ["delete_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs"]:
+    for method in ["delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
 
     server.serve_forever()
