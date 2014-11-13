@@ -312,8 +312,10 @@ def job_dashboard():
             config_property_names.update(x.keys())
 
         all_configs = adhoc.enumerate_configurations(config)
-        merged = adhoc.find_each_in_a(config_property_names, all_configs, [x['parameters'] for x in existing_jobs])
-        flattened = adhoc.flatten(merged)
+        existing_jobs_parameters = [x['parameters'] for x in existing_jobs]
+        existing_jobs_status = dict([ (x['parameters']['run_id'], x['status'])])
+        merged = adhoc.find_each_in_a(config_property_names, all_configs, existing_jobs_parameters)
+        flattened = adhoc.flatten(merged, existing_jobs_status)
     else:
         flattened = adhoc.from_existing(existing_jobs)
 
@@ -344,71 +346,35 @@ def parse_and_validate_jobs(job_ids_json):
 @secured
 def trash_job():
     job_ids = parse_and_validate_jobs(request.values["job-ids"])
+    service = get_wingman_service()
+    for job_id in job_ids:
+        service.delete_run("%s/%s/files" % (TARGET_ROOT, job_id))
 
     return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
                             "mv " + " ".join([TARGET_ROOT + "/" + job_id for job_id in job_ids])+ " " + TARGET_ROOT + "/old"])
 
+import xmlrpclib
 
-
-@app.route("/pull-jobs", methods=["POST"])
-@secured
-def pull_job():
-    job_ids = parse_and_validate_jobs(request.values["job-ids"])
-    destination = request.values["destination"]
-
-    t = tempfile.NamedTemporaryFile(delete=False)
-    t.write("set -ex\n")
-    t.write("if [ ! -e /xchip/datasci/ec2-runs/%s ] ; then mkdir /xchip/datasci/ec2-runs/%s ; fi\n" % (destination, destination))
-    t.write("cd /xchip/datasci/ec2-runs/%s\n" % destination)
-    for job_id in job_ids:
-        t.write("%s sshmaster %s --user ubuntu \"cd /data2/runs ; tar -czf - --exclude tasks --exclude temp %s \" | tar xvzf -\n" % (
-        config['STARCLUSTER_CMD'], config['CLUSTER_NAME'], job_id))
-    t.close()
-    return run_command(["bash", t.name], title="Pulling %s to %s"%(", ".join(job_ids), destination))
-
+def get_wingman_service():
+    endpoint_url = "http://localhost:3010"
+    return xmlrpclib.ServerProxy(endpoint_url)
 
 @app.route("/retry-job")
 @secured
 def retry_job():
     job_name = request.values["job"]
-    assert not ("/" in job_name)
-    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh retry"])
+    service = get_wingman_service()
+    service.retry_run("%s/%s/files" % (TARGET_ROOT, job_name))
+    return redirect_with_success("retried %d jobs" % (1, "/"))
 
-
-@app.route("/check-job")
-@secured
-def check_job():
-    job_name = request.values["job"]
-    assert not ("/" in job_name)
-    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh check ; bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh failed |grep -v \"\\[\" | /tmp/cluster_scripts/grep_for_known_issues"])
-
-
-@app.route("/poll-job")
-@secured
-def poll_job():
-    job_name = request.values["job"]
-    assert not ("/" in job_name)
-    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh poll"])
 
 @app.route("/kill-job")
 @secured
 def kill_job():
     job_name = request.values["job"]
-    assert not ("/" in job_name)
-    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                                "bash " + TARGET_ROOT + "/" + job_name + "/flock-wrapper.sh kill"])
-
-
-
-@app.route("/syncruns")
-@secured
-def syncRuns():
-    ec2 = get_ec2_connection()
-    master, key_location = get_master_info(ec2)
-    return run_command([config['PYTHON_EXE'], "-u", "syncRuns.py", master.dns_name, key_location])
+    service = get_wingman_service()
+    service.kill_run("%s/%s/files" % (TARGET_ROOT, job_name))
+    return redirect_with_success("killed %d jobs" % (1, "/"))
 
 
 @app.route("/submit-generic-job-form")
