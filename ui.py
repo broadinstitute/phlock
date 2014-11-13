@@ -288,7 +288,7 @@ CONFIGS = { "bulk": [ {"name":["bulk"], "targetDataset": ["ach2.12"], "targetDat
 
 def get_jobs_from_remote():
     import xmlrpclib
-    service = xmlrpclib.ServerProxy("http://localhost:4422")    
+    service = xmlrpclib.ServerProxy("http://localhost:3010")
     return service.get_runs()
 
 
@@ -551,15 +551,7 @@ def set_monitor_parameters():
 @app.route("/start-tunnel")
 @secured
 def start_tunnel():
-    ec2 = get_ec2_connection()
-
-    master, key_location = get_master_info(ec2)
-
-    return run_command(["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
-                        "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
-                        "-i", key_location, "-R 8999:datasci-dev.broadinstitute.org:8999", "-N",
-                        "ubuntu@" + master.dns_name])
-
+    return run_starcluster_cmd(["runplugin", "taigaTunnel"])
 
 @app.route("/test-run")
 @secured
