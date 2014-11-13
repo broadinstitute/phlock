@@ -11,15 +11,6 @@ temp_dir = None
 run_dir = None
 config_path = None
 
-def setup():
-    global temp_db
-    temp_db = tempfile.NamedTemporaryFile().name
-    print "temp_db = %s" % temp_db
-
-def teardown():
-    os.unlink(temp_db)
-    print "deleting %s" % temp_db
-
 SAMPLE_CONFIG="""
 executor: wingman
 invoke:
@@ -36,10 +27,19 @@ def setup_run_dir():
     with open(config_path, "w") as fd:
         fd.write(SAMPLE_CONFIG)
 
+    global temp_db
+    temp_db = tempfile.NamedTemporaryFile().name
+    print "temp_db = %s" % temp_db
+
 def cleanup_run_dir():
     global temp_dir
     shutil.rmtree(temp_dir)
     temp_dir = None
+
+    global temp_db
+    os.unlink(temp_db)
+    print "deleting %s" % temp_db
+    temp_db = None
 
 
 @with_setup(setup_run_dir, cleanup_run_dir)
@@ -95,3 +95,26 @@ def test_failed_run_lifecycle():
     store.task_failed(task_dir)
     runs = store.get_runs()
     assert runs[0]['status']['FAILED'] == 1
+
+@with_setup(setup_run_dir, cleanup_run_dir)
+def test_node_failure():
+    store = wingman.TaskStore(temp_db, "flock_home", endpoint_url="http://invalid:2000")
+
+    # simulate submission of the run to wingman
+    full_task_dir_paths = store.run_submitted(run_dir, "name", config_path, "{}")
+    task_dir = full_task_dir_paths[0]
+
+    # at this point, we expect a single run, with a single task which is ready for submission
+    runs = store.get_runs()
+    store.task_started(task_dir, "node01")
+
+    runs = store.get_runs()
+    print runs
+    assert runs[0]['status']['STARTED'] == 1
+
+    # and then node fails
+    store.node_disappeared("node01")
+
+    # confirm state switched back to WAITING
+    runs = store.get_runs()
+    assert runs[0]['status']['WAITING'] == 1
