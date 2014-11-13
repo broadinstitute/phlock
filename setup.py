@@ -11,8 +11,8 @@ setup(
     long_description=open('README.txt').read(),
     entry_points={'console_scripts': [
         "phlock = flock.main:main",
-        "phlock-monitor = flock.monitor:main",
-        "phlock-run-batch = flock.batch_flock:main"
+        "phlock-wingman = flock.wingman:main",
+#        "phlock-wingman-notify = flock.wingman_notify:main"
         ]},
     package_data={'flock': ['*.R']}
 )

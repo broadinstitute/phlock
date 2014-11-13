@@ -8,6 +8,10 @@ import threading
 import socket
 import traceback
 import json
+import wingman_client
+from queue.sge import SGEQueue
+from queue.local import LocalBgQueue
+import config as flock_config
 
 log = logging.getLogger("monitor")
 
@@ -20,7 +24,7 @@ DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id INTEGER, task_dir STRING prima
  "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
  "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
  "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)",
- "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING, name STRING, flock_config_path STRING, parameters STRING)",
+ "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING)",
  "CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)"]
 
 # Make run_id auto inc primary key
@@ -36,6 +40,9 @@ FAILED = -1
 MISSING = -2
 
 status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED", COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING"}
+
+def format_notify_command(flock_home, endpoint_url):
+    return "python %s/wingman_notify.py %s" % (flock_home, endpoint_url)
 
 class TransactionContext:
     def __init__(self, connection, lock):
@@ -58,7 +65,9 @@ class TransactionContext:
             self.lock.release()
 
 class TaskStore:
-    def __init__(self, db_path):
+    def __init__(self, db_path, flock_home, endpoint_url):
+        self.flock_home = flock_home
+        self.endpoint_url = endpoint_url
         new_db = not os.path.exists(db_path)
 
         self._connection = sqlite3.connect(db_path, check_same_thread=False)
@@ -101,6 +110,16 @@ class TaskStore:
             db.execute("INSERT INTO RUNS (run_dir, name, flock_config_path, parameters) VALUES (?, ?, ?, ?)", [run_id, name, config_path, parameters])
         return True
 
+    def run_submitted(self, run_id, name, config_path, parameters):
+        self.run_created(run_id, name, config_path, parameters)
+
+        notify_command = format_notify_command(self.flock_home, self.endpoint_url)
+        config = flock_config.load_config([config_path], run_id, {})
+        task_definition_path = flock.write_files_for_running(self.flock_home, notify_command, run_id, config.invoke, None, config.environment_variables)
+        self.taskset_created(run_id, task_definition_path)
+
+        return True
+
     def taskset_created(self, run_dir, task_definition_path):
         task_dirs = []
         with open(task_definition_path) as fd:
@@ -134,6 +153,18 @@ class TaskStore:
         self._lock.acquire()
         self._cv_created.wait(timeout)
         self._lock.release()
+
+
+    def delete_run(self, run_dir):
+        with self.transaction() as db:
+            db.execute("SELECT run_id FROM RUNS WHERE run_dir = ?", [run_dir])
+            rows = db.fetchall()
+            if len(rows) == 1:
+                run_id = rows[0][0]
+
+                db.execute("DELETE FROM TASKS WHERE run_id = ?", [run_id])
+                db.execute("DELETE FROM RUNS WHERE run_id = ?", [run_id])
+        return True
 
     def task_submitted(self, task_dir, external_id):
         with self.transaction() as db:
@@ -237,7 +268,7 @@ def identify_tasks_which_disappeared(store, queue):
             store.task_missing(task_dir)
 
 def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
-    print "submit_created_tasks"
+    log.info("submit_created_tasks(%s, %s, %s, %s)", listener, store, queue_factory, max_submitted)
 
     submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
@@ -265,10 +296,10 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
     tasks = store.find_tasks_by_status(READY, limit=submit_count)
     queue_cache = {}
     for run_id, task_dir, group in tasks:
-
+        print "run_id, task_dir, group", run_id, task_dir, group
         if not (run_id in queue_cache):
             run_dir, config_path = store.get_config_path(run_id)
-            config = flock.load_config([config_path], None, {})
+            config = flock_config.load_config([config_path], run_dir, {})
             queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
             queue_cache[run_id] = queue
 
@@ -280,11 +311,11 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
 def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted=100):
 
     if localQueue:
-        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: flock.LocalBgQueue(listener, workdir)
+        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: LocalBgQueue(listener, workdir)
     else:
-        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: flock.SGEQueue(listener, qsub_options, scatter_qsub_options, name, workdir)
+        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: SGEQueue(listener, qsub_options, scatter_qsub_options, name, workdir)
 
-    listener = flock.ConsolidatedMonitor(endpoint_url, flock_home)
+    listener = wingman_client.ConsolidatedMonitor(endpoint_url, flock_home)
     counter = 0
     t_queue = queue_factory(None, None, None, "", "./")
     while True:
@@ -308,23 +339,28 @@ def main():
     FORMAT = "[%(asctime)-15s] %(message)s"
     logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt="%Y%m%d-%H%M%S")
 
-    db = sys.argv[1]
-    port = int(sys.argv[2])
+    queue = sys.argv[1]
+    db = sys.argv[2]
+    port = int(sys.argv[3])
     
-    store = TaskStore(db)
-    endpoint_url = "http://%s:%d" % (socket.gethostname(), port)
     flock_home = flock.get_flock_home()
+    endpoint_url = "http://%s:%d" % (socket.gethostname(), port)
 
-    main_loop_thread = threading.Thread(target=lambda: main_loop(endpoint_url, flock_home, store))
+    store = TaskStore(db, flock_home, endpoint_url=endpoint_url)
+
+    assert queue in ['local', 'sge']
+
+    main_loop_thread = threading.Thread(target=lambda: main_loop(endpoint_url, flock_home, store, localQueue=(queue == 'local')))
     main_loop_thread.daemon = True
     server = SimpleXMLRPCServer(("0.0.0.0", port))
     main_loop_thread.start()
 
     print "Listening on port %d..." % port
-    for method in ["run_created", "taskset_created", "task_submitted", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs"]:
+    for method in ["delete_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
 
     server.serve_forever()
 
 if __name__ == "__main__":
+    logging.basicConfig(format=flock.FORMAT, level=logging.INFO, datefmt="%Y%m%d-%H%M%S")
     main()

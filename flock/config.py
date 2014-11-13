@@ -8,7 +8,8 @@ log = logging.getLogger("flock")
 
 Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options",
                                            "scatter_bsub_options", "scatter_qsub_options", "workdir", "name", "run_id",
-                                           "monitor_port", "environment_variables"])
+                                           "wingman_host",
+                                           "wingman_port", "environment_variables"])
 
 def parse_config(f, multivalue_keys):
     props = {}
@@ -53,7 +54,7 @@ def parse_config(f, multivalue_keys):
 
 
 def load_config(filenames, run_id, overrides):
-    config = {"bsub_options": "", "qsub_options": "", "workdir": ".", "name": "", "base_run_dir": ".", "monitor_port":None, "setenv":[]}
+    config = {"bsub_options": "", "qsub_options": "", "workdir": ".", "name": "", "base_run_dir": ".", "wingman_host":None, "wingman_port":3010, "setenv":[]}
     for filename in filenames:
         log.info("Reading config from %s", filename)
         with open(filename) as f:
@@ -70,6 +71,8 @@ def load_config(filenames, run_id, overrides):
         config["qsub_options"] = config["qsub_options"] + " -p -5"
 
     if not ("run_id" in config):
+        assert config['base_run_dir'] != None
+        assert run_id != None
         config['run_id'] = os.path.abspath(os.path.join(config['base_run_dir'], os.path.basename(run_id)))
 
     if not ("name" in config):

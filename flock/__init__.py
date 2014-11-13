@@ -150,6 +150,56 @@ def dump_file(filename):
         sys.stdout.write("  [ File %s does not exist ]" % filename)
 
 
+def write_files_for_running(flock_home, notify_command, run_id, script_body, test_job_count, environment_variables):
+    run_dir = os.path.abspath(run_id)
+    if os.path.exists(run_id):
+        raise Exception("\"%s\" already exists. Aborting.", run_id)
+
+    os.makedirs("%s/temp" % run_id)
+    os.makedirs("%s/tasks-init/scatter" % run_id)
+    os.makedirs("%s/tasks" % run_id)
+    temp_run_script = "%s/tasks-init/scatter/scatter.R" % run_id
+    environment_script = "%s/env.sh" % run_id
+
+    with open(environment_script, "w") as fd:
+        for stmt in environment_variables:
+            fd.write("export %s\n" % (stmt))
+
+    with open(temp_run_script, "w") as fd:
+        fd.write("flock_starting_file <- '%s/tasks-init/scatter/started-time.txt'\n" % run_dir)
+        fd.write("flock_completion_file <- '%s/tasks-init/scatter/finished-time.txt'\n" % run_dir)
+        fd.write("flock_test_job_count <- %s\n" % ("NA" if test_job_count == None else test_job_count))
+        fd.write("flock_version <- c(%s);\n" % ", ".join(FLOCK_VERSION.split(".")))
+        fd.write("flock_run_dir <- '%s';\n" % (run_dir))
+        fd.write("flock_home <- '%s';\n" % (flock_home))
+        if notify_command:
+            fd.write("flock_notify_command <- '%s';\n" % notify_command)
+        else:
+            fd.write("flock_notify_command <- NULL;\n")
+
+        fd.write("""fileConn<-file(flock_starting_file)
+        writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
+        close(fileConn)
+        """)
+
+        fd.write("source('%s/flock_support.R');\n" % flock_home)
+        fd.write(script_body)
+        fd.write("""# write out record that task completed successfully
+        fileConn<-file(flock_completion_file)
+        writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
+        close(fileConn)
+        """)
+
+    with open("%s/tasks-init/scatter/task.sh" % run_id, "w") as fd:
+        fd.write("source %s\n" % environment_script)
+        fd.write("exec R --vanilla < %s\n" % temp_run_script)
+
+    task_definition_path = "%s/tasks-init/task_dirs.txt" % run_id
+    with open(task_definition_path, "w") as fd:
+        fd.write("1 tasks-init/scatter\n")
+
+    return task_definition_path
+
 class Flock(object):
     def __init__(self, job_queue, flock_home, notify_command):
         self.job_queue = job_queue
@@ -193,52 +243,7 @@ class Flock(object):
             sys.exit(1)
 
     def run(self, run_id, script_body, wait, maxsubmit, test_job_count, environment_variables, no_poll=False):
-        run_dir = os.path.abspath(run_id)
-        if os.path.exists(run_id):
-            log.error("\"%s\" already exists. Aborting.", run_id)
-            sys.exit(1)
-
-        os.makedirs("%s/temp" % run_id)
-        os.makedirs("%s/tasks-init/scatter" % run_id)
-        os.makedirs("%s/tasks" % run_id)
-        temp_run_script = "%s/tasks-init/scatter/scatter.R" % run_id
-        environment_script = "%s/env.sh" % run_id
-        
-        with open(environment_script, "w") as fd:
-            for stmt in environment_variables:
-                fd.write("export %s\n" % (stmt))
-
-        with open(temp_run_script, "w") as fd:
-            fd.write("flock_starting_file <- '%s/tasks-init/scatter/started-time.txt'\n" % run_dir)
-            fd.write("flock_completion_file <- '%s/tasks-init/scatter/finished-time.txt'\n" % run_dir)
-            fd.write("flock_test_job_count <- %s\n" % ("NA" if test_job_count == None else test_job_count))
-            fd.write("flock_version <- c(%s);\n" % ", ".join(FLOCK_VERSION.split(".")))
-            fd.write("flock_run_dir <- '%s';\n" % (run_dir))
-            fd.write("flock_home <- '%s';\n" % (self.flock_home))
-            if self.notify_command:
-                fd.write("flock_notify_command <- '%s';\n" % self.notify_command)
-            else:
-                fd.write("flock_notify_command <- NULL;\n")
-
-            fd.write("""fileConn<-file(flock_starting_file)
-      writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
-      close(fileConn)
-      """)
-
-            fd.write("source('%s/flock_support.R');\n" % self.flock_home)
-            fd.write(script_body)
-            fd.write("""# write out record that task completed successfully
-      fileConn<-file(flock_completion_file)
-      writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
-      close(fileConn)
-      """)
-
-        with open("%s/tasks-init/scatter/task.sh" % run_id, "w") as fd:
-            fd.write("source %s\n" % environment_script)
-            fd.write("exec R --vanilla < %s\n" % temp_run_script)
-
-        with open("%s/tasks-init/task_dirs.txt" % run_id, "w") as fd:
-            fd.write("1 tasks-init/scatter\n")
+        write_files_for_running(self.flock_home, self.notify_command, run_id, script_body, test_job_count, environment_variables)
 
         if not no_poll:
             self.poll_once(run_id, maxsubmit)

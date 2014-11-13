@@ -72,6 +72,7 @@ flock.run <- function(inputs, task_script_name, gather_script_name=NULL, flock_c
   close(fileConn)
 
   if(!is.null(flock_notify_command)) {
-    system(paste(flock_notify_command, " taskset ", flock_run_dir, " ", taskset.file, sep=''))
+    ret.code <- system(paste(flock_notify_command, " taskset ", flock_run_dir, " ", taskset.file, sep=''))
+    stopifnot(ret.code == 0)
   }
 }
