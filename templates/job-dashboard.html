@@ -82,6 +82,9 @@
             <th>
                 Job name
             </th>
+            <th>
+                State
+            </th>
             {% for c in column_names %}
                 <th>
                     {{ c }}
@@ -106,23 +109,14 @@
                 <td>
                     {{ j.name }}
                 </td>
+                <td>
+                    {{ j.status }}
+                </td>
                 {% for c in column_names %}
                     <td>
                         {{ j.parameters[c] }}
                     </td>
                 {% endfor %}
-                <td>
-                    <a href="/check-job?job={{ j.job_name }}">Check</a>
-                </td>
-                <td>
-                    <a href="/poll-job?job={{ j.job_name }}">Poll</a>
-                </td>
-                <td>
-                    <a href="/retry-job?job={{ j.job_name }}">Retry</a>
-                </td>
-                <td>
-                    <a href="/kill-job?job={{ j.job_name }}">Kill</a>
-                </td>
             </tr>
         {% endfor %}
         </tbody>

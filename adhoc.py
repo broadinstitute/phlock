@@ -112,10 +112,11 @@ def get_all_tags(summary):
     return tags
 
 class Job:
-    def __init__(self, name, parameters):
+    def __init__(self, name, parameters, status):
         self.parameters = parameters
         self.tags = create_job_tag_set(parameters)
         self.name = name
+        self.status = status
 
     def has_tags(self, tags):
         for tag in tags:
@@ -123,15 +124,17 @@ class Job:
                 return False
         return True
 
-def flatten(records):
+def flatten(records, existing_jobs_status):
     # returns list of jobs
     jobs = []
     for k, ref, existing_jobs in records:
         if len(existing_jobs) == 0:
-            jobs.append(Job(None, ref))
+            jobs.append(Job(None, ref, None))
         else:
             for existing_job in existing_jobs:
-                jobs.append(Job(existing_job["run_id"], existing_job))
+                run_id = existing_job["run_id"]
+                status = existing_jobs_status[run_id]
+                jobs.append(Job(run_id, existing_job, existing_jobs_status[run_id]))
     return jobs
 
 def from_existing(existing_jobs):
@@ -139,7 +142,7 @@ def from_existing(existing_jobs):
     jobs = []
     for existing_job in existing_jobs:
         p = existing_job["parameters"]
-        jobs.append(Job(p["run_id"], p))
+        jobs.append(Job(p["run_id"], p, existing_job['status']))
     return jobs
 
 
