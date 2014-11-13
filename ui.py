@@ -551,7 +551,7 @@ def set_monitor_parameters():
 @app.route("/start-tunnel")
 @secured
 def start_tunnel():
-    return run_starcluster_cmd(["runplugin", "taigaTunnel"])
+    return run_starcluster_cmd(["runplugin", "taigaTunnel", config['CLUSTER_NAME']])
 
 @app.route("/test-run")
 @secured
