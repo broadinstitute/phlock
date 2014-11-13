@@ -3,7 +3,6 @@ from fabric.api import run, local, put, get, cd, settings
 import fabric.contrib.files
 import fabric.network
 import tempfile
-import datetime
 import logging
 
 CODE_DIR = "/data2/code-cache"
@@ -49,7 +48,7 @@ def install_config(target_root, sha_code_dir, config_temp_file, timestamp):
     # upload the config file and run via flock, after setting the working directory to be the current code dir
     put(config_temp_file, target_dir+"/config")
 
-    command = "bash "+target_dir+"/flock-wrapper.sh run"
+    command = "bash "+target_dir+"/flock-wrapper.sh submit"
     return sha_code_dir, target_dir, command
 
 def install_wrapper_script(sha_code_dir, target_dir, flock_path):
