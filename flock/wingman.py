@@ -268,7 +268,6 @@ def identify_tasks_which_disappeared(store, queue):
             store.task_missing(task_dir)
 
 def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
-    log.info("submit_created_tasks(%s, %s, %s, %s)", listener, store, queue_factory, max_submitted)
 
     submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
@@ -296,7 +295,6 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
     tasks = store.find_tasks_by_status(READY, limit=submit_count)
     queue_cache = {}
     for run_id, task_dir, group in tasks:
-        print "run_id, task_dir, group", run_id, task_dir, group
         if not (run_id in queue_cache):
             run_dir, config_path = store.get_config_path(run_id)
             config = flock_config.load_config([config_path], run_dir, {})
