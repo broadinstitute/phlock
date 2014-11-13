@@ -106,7 +106,7 @@ def deploy(host, key_filename, repo, branch, config_file, target_root, json_para
                 #run(command)
                 #stdout_capture.close()
 
-            service.run_submitted(target_dir, timestamp, remote_config, json.dumps(params))
+            service.run_submitted(target_dir+"/files", timestamp, remote_config, json.dumps(params))
     finally:
         fabric.network.disconnect_all()
 
