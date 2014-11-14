@@ -333,7 +333,9 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=5):
 
     # process all the waiting to make sure they've met their requirements
     count_cache = {}
-    for run_id, task_dir, group in store.find_tasks_by_status(WAITING):
+    waiting_tasks = store.find_tasks_by_status(WAITING)
+    log.info("Found %d WAITING tasks", len(waiting_tasks))
+    for run_id, task_dir, group in waiting_tasks:
         if not (run_id in count_cache):
             counts_per_run = store.count_unfinished_tasks_by_group_number(run_id)
             count_cache[run_id] = counts_per_run
@@ -353,9 +355,11 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=5):
     # submit any ready tasks
     submit_count = max(0, max_submitted-submitted_count)
     tasks = store.find_tasks_by_status(READY, limit=submit_count)
+    log.info("Found %d READY tasks", len(tasks))
     queue_cache = {}
     for run_id, task_dir, group in tasks:
         if not (run_id in queue_cache):
+            log.info("Creating queue missing from cache for %s", run_id)
             run_dir, config_path = store.get_config_path(run_id)
             required_mem_override = store.get_required_mem_override(run_id)
 
@@ -379,17 +383,20 @@ def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted
     counter = 0
     t_queue = queue_factory(None, None, None, "", "./", None)
     while True:
-        needed_to_kill_tasks = handle_kill_pending_tasks(store, t_queue)
-        submit_created_tasks(listener, store, queue_factory, max_submitted=max_submitted)
+        try:
+            needed_to_kill_tasks = handle_kill_pending_tasks(store, t_queue)
+            submit_created_tasks(listener, store, queue_factory, max_submitted=max_submitted)
 
-        if counter % 100 == 0:
-            identify_tasks_which_disappeared(store, t_queue)
+            if counter % 100 == 0:
+                identify_tasks_which_disappeared(store, t_queue)
 
-        # only sleep if we didn't have to kill any tasks.  If we did have to kill tasks, then
-        # don't sleep and immediately poll again in case there are more tasks to kill.
-        if not needed_to_kill_tasks:
-            store.wait_for_created(10)
-            counter += 1
+            # only sleep if we didn't have to kill any tasks.  If we did have to kill tasks, then
+            # don't sleep and immediately poll again in case there are more tasks to kill.
+            if not needed_to_kill_tasks:
+                store.wait_for_created(10)
+                counter += 1
+        except:
+            traceback.print_exc()
 
 def make_function_wrapper(fn):
     def wrapped(*args, **kwargs):
