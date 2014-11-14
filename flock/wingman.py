@@ -40,8 +40,10 @@ FAILED = -1
 MISSING = -2
 KILLED = -3
 KILL_PENDING = -4
+KILL_SUBMITTED = -5
 
-status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED", COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING", KILLED: "KILLED", KILL_PENDING : "KILL_PENDING"}
+status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED", COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING", KILLED: "KILLED", KILL_PENDING : "KILL_PENDING",
+                       KILL_SUBMITTED: "KILL_SUBMITTED"}
 
 def format_notify_command(flock_home, endpoint_url):
     return "python %s/wingman_notify.py %s" % (flock_home, endpoint_url)
@@ -292,16 +294,18 @@ class TaskStore:
 
 def handle_kill_pending_tasks(store, queue, batch_size=10):
     log.info("calling handle_kill_pending_tasks")
-    external_ids = store.find_tasks_external_id_by_status(KILL_PENDING, limit=batch_size)
-    if len(external_ids) > 0:
-        log.info("Killing tasks with external_ids: %s", repr(external_ids))
+    external_id_and_task_dirs = dict(store.find_tasks_external_id_by_status(KILL_PENDING, limit=batch_size))
+    if len(external_id_and_task_dirs) > 0:
         # strip off the queue prefix
-        external_ids = [external_id.split(":")[1] for external_id in external_ids]
+        external_ids = [external_id.split(":")[1] for external_id in external_id_and_task_dirs.keys()]
+
+        log.info("Killing tasks with external_ids: %s", repr(external_ids))
         tasks = [flock.Task(None, external_id, None, None) for external_id in external_ids]
         queue.kill(tasks)
         # just let the jobs transition to MISSING in next periodic check.  Should we explictly mark these as killed?
         # seems like many ways for that to fall out of sync with the backend queue if we set it to killed without checking
-        return True
+        for external_id, task_dir in external_id_and_task_dirs:
+            store.set_task_status(task_dir, KILL_SUBMITTED)
     return False
 
 def identify_tasks_which_disappeared(store, queue):
