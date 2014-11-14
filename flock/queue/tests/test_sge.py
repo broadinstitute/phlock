@@ -2,6 +2,7 @@ from flock import Task
 from flock.queue.sge import SGEQueue
 import mock
 import subprocess
+from flock.queue.sge import rewrite_options_with_override
 
 JOB_XML = """<?xml version='1.0'?>
 <job_info  xmlns:xsd="http://gridscheduler.svn.sourceforge.net/viewvc/gridscheduler/trunk/source/dist/util/resources/schemas/qstat/qstat.xsd?revision=11">
@@ -64,3 +65,8 @@ def test_kill():
     queue.kill([Task("task", "100", "running", "/home/task")])
 
     qdel_popen_mock.assert_called_once_with(["qdel", "100"])
+
+def test_rewrite_options():
+    assert rewrite_options_with_override(["-o", "stdout"], None) == ["-o", "stdout"]
+    assert rewrite_options_with_override(["-o", "stdout"], 80) == ["-o", "stdout", "-l", "h_vmem=80M,virtual_free=80M"]
+    assert rewrite_options_with_override(["-l", "h_vmem=1G,virtual_free=1G", "-o", "stdout"], 80) == ["-o", "stdout", "-l", "h_vmem=80M,virtual_free=80M"]

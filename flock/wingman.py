@@ -222,8 +222,7 @@ class TaskStore:
             if len(rows) == 1:
                 run_id = rows[0][0]
 
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILL_PENDING, run_id, SUBMITTED, STARTED])
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILLED, run_id, READY, WAITING])
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [WAITING, run_id, FAILED, KILLED])
         return True
 
     def kill_run(self, run_dir):
@@ -233,7 +232,8 @@ class TaskStore:
             if len(rows) == 1:
                 run_id = rows[0][0]
 
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [WAITING, run_id, FAILED, KILLED])
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILL_PENDING, run_id, SUBMITTED, STARTED])
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILLED, run_id, READY, WAITING])
         return True
 
     def find_tasks_by_status(self, status, limit=None):

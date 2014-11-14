@@ -20,11 +20,14 @@ def rewrite_options_with_override(options, override_req_mem_in_megs):
                 # if we have a constraint specified via "-l", drop this and the next parameter
                 del options[i]
                 del options[i]
+            else:
+                i += 1
 
         # now we should have a clean list of arguments with no "-l h_vmem=16G,virtual_free=16G"
         # so add on our own
         options.append("-l")
         options.append("h_vmem=%dM,virtual_free=%dM" % (override_req_mem_in_megs, override_req_mem_in_megs))
+    print options
     return options
 
 class SGEQueue(AbstractQueue):

@@ -98,6 +98,7 @@ def test_failed_run_lifecycle():
 
     store.retry_run(run_dir)
     runs = store.get_runs()
+    print runs
     assert runs[0]['status']['WAITING'] == 1
 
 
