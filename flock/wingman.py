@@ -377,7 +377,7 @@ def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted
 
     listener = wingman_client.ConsolidatedMonitor(endpoint_url, flock_home)
     counter = 0
-    t_queue = queue_factory(None, None, None, "", "./")
+    t_queue = queue_factory(None, None, None, "", "./", None)
     while True:
         needed_to_kill_tasks = handle_kill_pending_tasks(store, t_queue)
         submit_created_tasks(listener, store, queue_factory, max_submitted=max_submitted)
