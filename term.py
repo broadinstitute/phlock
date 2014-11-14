@@ -30,6 +30,36 @@ class Promise(object):
         for callback in callbacks:
             callback()
 
+class ManagedProcess(object):
+    def __init__(self, proc, stdout, terminal):
+        self.proc = proc
+        self.stdout = stdout
+        self.terminal = terminal
+        self.completion_promise = Promise()
+        self.thread = None
+
+        terminal.status = "running"
+        terminal.is_running = True
+
+    def io_loop(self):
+        while True:
+            buffer = os.read(self.stdout.fileno(), 65536)
+            if buffer == '':
+                break
+            self.terminal.write(buffer)
+
+        self.proc.wait()
+        self.stdout.close()
+
+        print "process has ended.  Notifying promise"
+        self.completion_promise.done()
+
+    def start_thread(self):
+        self.thread = threading.Thread(target=self.io_loop)
+        self.thread.start()
+        return self.completion_promise
+
+
 class Terminal(object):
     def __init__(self, id, title, command_line=None, log_file=None):
         self.id = id
@@ -47,42 +77,20 @@ class Terminal(object):
         self.is_canceled = False
         self.log_file = log_file
 
-    def attach(self, stdout, main_loop, proc):
-        self.proc = proc
-        self.status = "running"
-        self.is_running = True
+    def write(self, buffer):
+        xbuffer = buffer.replace("\n", "\r\n")
+        self.lock.acquire()
+        self.stream.feed(xbuffer)
+        if self.log_file != None:
+            self.log_file.write(buffer)
+        self.lock.release()
 
-        self.thread = threading.Thread(target=main_loop)
-
-        self.stdout = stdout
-        self.completion_promise = Promise()
-
-        self.thread.start()
-
-        return self.completion_promise
-
-    def run_until_terminate(self, proc):
-        while True:
-            buffer = os.read(self.stdout.fileno(), 65536)
-            xbuffer = buffer.replace("\n", "\r\n")
-            if xbuffer == '':
-                break
-
-            self.lock.acquire()
-            self.stream.feed(xbuffer)
-            if self.log_file != None:
-                self.log_file.write(buffer)
-            self.lock.release()
-        proc.wait()
-
+    def notify_terminated(self):
         if self.log_file != None:
             self.log_file.flush()
 
-        self.stdout.close()
         self.status = "terminated"
         self.is_running = False
-        print "process in terminal %s has ended.  Notifying promise" % self.id
-        self.completion_promise.done()
 
     def display(self):
         self.lock.acquire()
@@ -115,32 +123,30 @@ def create_term_for_command(id, args, title=None):
     if title == None:
         title = command_line
     t = Terminal(id, title=title, command_line=command_line)
-    t.attach(p.stdout, lambda: t.run_until_terminate(p), p)
+    mp = ManagedProcess(p, p.stdout, t)
+    mp.start_thread().then(t.notify_terminated)
 
     return t
 
-
-def attach_new_command(terminal, args_generator, interval):
-    args = args_generator()
-    print "running %s" % args
-    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
-    cmd_completion = terminal.attach(p.stdout, lambda: terminal.run_until_terminate(p), p)
-
-    def sleep_and_reattach():
-        if not terminal.is_canceled:
-            print "sleeping for %d seconds" % interval
-            terminal.status = "sleeping"
-            time.sleep(interval)
-            attach_new_command(terminal, args_generator, interval)
-
-    cmd_completion.then(sleep_and_reattach)
-
-
-def create_periodic_execution(id, title, args_generator, interval):
-    t = Terminal(id, title)
-    attach_new_command(t, args_generator, interval)
-    return t
-
+#def attach_new_command(terminal, args_generator, interval):
+#    args = args_generator()
+#    print "running %s" % args
+#    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
+#    cmd_completion = terminal.attach(p.stdout, lambda: terminal.run_until_terminate(p), p)
+#
+#    def sleep_and_reattach():
+#        if not terminal.is_canceled:
+#            print "sleeping for %d seconds" % interval
+#            terminal.status = "sleeping"
+#            time.sleep(interval)
+#            attach_new_command(terminal, args_generator, interval)
+#
+#    cmd_completion.then(sleep_and_reattach)
+#
+#def create_periodic_execution(id, title, args_generator, interval):
+#    t = Terminal(id, title)
+#    attach_new_command(t, args_generator, interval)
+#    return t
 
 class TerminalManager:
     def __init__(self):

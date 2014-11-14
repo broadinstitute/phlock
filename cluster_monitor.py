@@ -4,6 +4,7 @@ import threading
 import Queue
 import traceback
 from instance_types import cpus_per_instance
+import term
 
 class Parameters:
     def __init__(self):
@@ -44,11 +45,12 @@ CM_STARTING = "starting"
 CM_UPDATING = "updating"
 CM_SLEEPING = "sleeping"
 CM_STOPPING = "stopping"
+CM_DEAD = "dead"
 
 class ClusterManager(object):
     def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2):
         super(ClusterManager, self).__init__()
-        self.state = CM_STOPPED
+        self.state = CM_DEAD
         self.requested_stop = False
         self.monitor_parameters = monitor_parameters
         self.cluster_name = cluster_name
@@ -59,11 +61,15 @@ class ClusterManager(object):
         self.ec2 = ec2
         self.cluster_template = cluster_template
         self.first_update = True
+        self.thread = None
 
     def _send_wakeup(self):
         self.tell("update")
 
     def start_manager(self):
+        # make sure we don't try to have two running manager threads
+        assert self.thread is None or not self.thread.is_alive
+
         # find out if cluster is already running
         process = subprocess.Popen(self.cmd_prefix+["listclusters", self.cluster_name], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         output, stderr = process.communicate()
@@ -72,6 +78,7 @@ class ClusterManager(object):
 
         if "does not exist" in stderr:
             cluster_is_running = False
+            self.state = CM_STOPPED
         else:
             assert "security group" in output
             cluster_is_running = True
@@ -92,12 +99,23 @@ class ClusterManager(object):
         self.tell("stop")
 
     def run(self):
-        while True:
+        running = True
+
+        # if handle each message from the queue, but if we get an exception,
+        # let the thread die after writing out the exception to the terminal
+        while running:
             try:
                 message = self.queue.get()
                 self.on_receive(message)
             except:
-                traceback.print_exc()
+                exception_message = traceback.format_exc()
+
+                print(exception_message)
+                self.terminal.write(exception_message)
+
+                running = False
+
+        self.state = CM_DEAD
 
     def tell(self, msg):
         self.queue.put(msg)
@@ -108,7 +126,8 @@ class ClusterManager(object):
     def _run_cmd(self, args, post_execute_msg):
         print "executing %s" % args
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
-        completion = self.terminal.attach(p.stdout, lambda: self.terminal.run_until_terminate(p), p)
+        mp = term.ManagedProcess(p, p.stdout, self.terminal)
+        completion = mp.start_thread()
         completion.then(lambda: self.tell(post_execute_msg))
 
     def _run_starcluster_cmd(self, args, post_execute_msg):
@@ -171,7 +190,7 @@ class ClusterManager(object):
         if cmd == "state?":
             return self.state
         elif cmd == "start":
-            if self.state == CM_STOPPED:
+            if self.state == CM_STOPPED or self.state == CM_DEAD:
                 self._execute_startup()
         elif cmd == "stop":
             if self.state in [CM_STARTING, CM_STOPPING, CM_UPDATING]:
