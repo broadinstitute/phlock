@@ -309,14 +309,8 @@ def handle_kill_pending_tasks(store, queue, batch_size=10):
         store.set_task_status(task_dir, KILL_SUBMITTED)
     return False
 
-def identify_tasks_which_disappeared(store, queue):
-    log.info("calling identify_tasks_which_disappeared")
-    # two tasks: 1. identify runs which our db reports as running, but backend queue is no longer reporting as running
-
-    external_id_to_task_dir = dict([(external_id, task_dir) for task_dir, external_id in store.find_external_ids_of_submitted()])
-
+def update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, state_to_use_if_missing):
     external_ids_of_those_we_think_are_submitted = set(external_id_to_task_dir.keys())
-    external_ids_of_actually_in_queue = set([(queue.external_id_prefix + x) for x in queue.get_jobs_from_external_queue().keys()])
 
     # identify tasks which transitioned from running -> not running
     # and call these "missing" (assuming the db still claims these are running).  All other transitions
@@ -332,7 +326,19 @@ def identify_tasks_which_disappeared(store, queue):
         if flock.finished_successfully(None, task_dir):
             store.task_completed(task_dir)
         else:
-            store.task_missing(task_dir)
+            store.set_task_status(task_dir, state_to_use_if_missing)
+
+def identify_tasks_which_disappeared(store, queue):
+    log.info("calling identify_tasks_which_disappeared")
+    external_ids_of_actually_in_queue = set([(queue.external_id_prefix + x) for x in queue.get_jobs_from_external_queue().keys()])
+
+    # handle all the submitted jobs
+    external_id_to_task_dir = dict([(external_id, task_dir) for task_dir, external_id in store.find_external_ids_of_submitted()])
+    update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, MISSING)
+
+    # handle all of the killed jobs
+    external_id_to_task_dir = dict(store.find_tasks_external_id_by_status(KILL_SUBMITTED))
+    update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, KILLED)
 
 def submit_created_tasks(listener, store, queue_factory, max_submitted=5):
 
