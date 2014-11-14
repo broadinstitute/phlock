@@ -290,7 +290,7 @@ class TaskStore:
 
     def set_required_mem_override(self, run_id, mem_override):
         with self.transaction() as db:
-            db.execute("UPDATE RUNS set required_mem_override = ? FROM RUNS WHERE run_id = ?", [mem_override, run_id])
+            db.execute("UPDATE RUNS set required_mem_override = ? WHERE run_id = ?", [mem_override, run_id])
         return True
 
 def handle_kill_pending_tasks(store, queue, batch_size=10):
