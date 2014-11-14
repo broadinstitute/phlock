@@ -254,12 +254,12 @@ class TaskStore:
         if limit == 0:
             return []
 
-        query = "SELECT external_id FROM tasks WHERE status = ?"
+        query = "SELECT external_id, task_dir FROM tasks WHERE status = ?"
         if limit != None:
             query += " limit %d" % limit
         with self.transaction() as db:
             db.execute(query, [status])
-            recs = [x[0] for x in db.fetchall()]
+            recs = db.fetchall()
         return recs
 
     def find_external_ids_of_submitted(self):
