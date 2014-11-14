@@ -269,7 +269,7 @@ class TaskStore:
     def count_unfinished_tasks_by_group_number(self, run_id):
         result = {}
         with self.transaction() as db:
-            db.execute("SELECT group_number, count(*) FROM tasks WHERE status not in (?, ?) AND run_id = ? group by group_number",
+            db.execute("SELECT group_number, count(*) FROM tasks WHERE status not in (?, ?, ?) AND run_id = ? group by group_number",
                        [KILLED, FAILED, COMPLETED, run_id])
             for number, count in db.fetchall():
                 result[number] = count
