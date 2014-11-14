@@ -368,7 +368,7 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=5):
         queue.submit(run_id, os.path.join(run_dir, task_dir), "scatter" in task_dir)
 
 
-def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted=100):
+def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted=5):
 
     if localQueue:
         queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override: LocalBgQueue(listener, workdir)
