@@ -12,6 +12,7 @@ import wingman_client
 from queue.sge import SGEQueue
 from queue.local import LocalBgQueue
 import config as flock_config
+import time
 
 log = logging.getLogger("monitor")
 
@@ -393,21 +394,23 @@ def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted
         queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override: SGEQueue(listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override)
 
     listener = wingman_client.ConsolidatedMonitor(endpoint_url, flock_home)
-    counter = 0
     t_queue = queue_factory(None, None, None, "", "./", None)
+
+    last_check_for_missing = None
+
     while True:
         try:
             needed_to_kill_tasks = handle_kill_pending_tasks(store, t_queue)
             submit_created_tasks(listener, store, queue_factory, max_submitted=max_submitted)
 
-            if counter % 100 == 0:
+            if last_check_for_missing == None or (time.time() - last_check_for_missing) > 60:
                 identify_tasks_which_disappeared(store, t_queue)
+                last_check_for_missing = time.time()
 
             # only sleep if we didn't have to kill any tasks.  If we did have to kill tasks, then
             # don't sleep and immediately poll again in case there are more tasks to kill.
             if not needed_to_kill_tasks:
                 store.wait_for_created(10)
-                counter += 1
         except:
             traceback.print_exc()
 
