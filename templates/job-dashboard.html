@@ -70,8 +70,9 @@
         </tbody>
     </table>
 
-    <button id="trash-selected">Move selected to trash</button>
-    <button id="pull-selected">Pull selected</button>
+    <button id="archive-selected">Archive</button>
+    <button id="kill-selected">Kill</button>
+    <button id="retry-selected">Retry</button>
 
     <table class="table">
         <thead>
@@ -122,25 +123,29 @@
         </tbody>
     </table>
 
-    <!-- form for sending jobs to trash -->
-    <form action="/trash-jobs" method="POST" id="trash-jobs-form">
-        <input type="hidden" value="" name="job-ids" id="trash-job-ids">
+    <!-- hidden form for retry jobs -->
+    <form action="/retry-jobs" method="POST" id="retry-jobs-form">
+        <input type="hidden" value="" name="job-ids" id="retry-job-ids">
     </form>
 
-    <!-- Pulldialog -->
+    <!-- hidden form for killing jobs -->
+    <form action="/kill-jobs" method="POST" id="kill-jobs-form">
+        <input type="hidden" value="" name="job-ids" id="kill-job-ids">
+    </form>
+
+    <!-- Archive dialog -->
     <div class="modal fade" id="modal-pull-dialog" tabindex="-1" role="dialog" aria-labelledby="pullModalLabel"
          aria-hidden="true">
         <div class="modal-dialog">
-            <form action="/pull-jobs" method="POST">
-                <input type="hidden" value="" name="job-ids" id="pull-job-ids">
+            <form action="/archive-jobs" method="POST">
+                <input type="hidden" value="" name="job-ids" id="archive-job-ids">
 
                 <div class="modal-content">
                     <div class="modal-body">
 
                         <div class="form-horizontal" role="form">
                             <div class="form-group">
-                                <label for="destination" class="col-sm-7 control-label">Name of directory to create
-                                    under /xchip/datasci/runs</label>
+                                <label for="destination" class="col-sm-7 control-label">Name of directory</label>
 
                                 <div class="col-sm-5">
                                     <input type="text" class="form-control" name="destination" id="destination"
@@ -152,12 +157,44 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-                        <button type="submit" class="btn btn-primary">Pull</button>
+                        <button type="submit" class="btn btn-primary">Archive</button>
                     </div>
                 </div>
             </form>
         </div>
     </div>
+
+    <!-- Memory override dialog -->
+    <div class="modal fade" id="modal-mem-override-dialog" tabindex="-1" role="dialog" aria-labelledby="pullModalLabel"
+         aria-hidden="true">
+        <div class="modal-dialog">
+            <form action="/job-set-mem-override" method="POST">
+                <input type="hidden" value="" name="job-ids" id="mem-override-job-ids">
+
+                <div class="modal-content">
+                    <div class="modal-body">
+
+                        <div class="form-horizontal" role="form">
+                            <div class="form-group">
+                                <label for="destination" class="col-sm-7 control-label">New memory limit in MB</label>
+
+                                <div class="col-sm-5">
+                                    <input type="text" class="form-control" name="mem-limit" id="mem-limit"
+                                           placeholder="(example: 1000)">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Set</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
 
 {% endblock %}
 
@@ -166,15 +203,12 @@
 
     <script>
         $(function () {
-
             // install select-all handler on checkbox
             $("#select-all-jobs").on("click", function () {
                 console.log("select-all-jobs");
                 var isChecked = $(this).is(":checked")
                 $(".job-selection").prop("checked", isChecked)
             });
-
-            var pullDialog = $("#modal-pull-dialog");
 
             var getJobSelectionJson = function () {
                 var job_id_list = [];
@@ -186,18 +220,31 @@
                 return JSON.stringify(job_id_list);
             }
 
-            $("#pull-selected").on("click", function () {
+            $("#kill-selected").on("click", function () {
                 var job_id_list_json = getJobSelectionJson()
-                $("#pull-job-ids").prop("value", job_id_list_json);
-                pullDialog.modal("show");
+                $("#kill-job-ids").prop("value", job_id_list_json);
+                $("#kill-jobs-form").submit();
             });
 
-            $("#trash-selected").on("click", function () {
+            $("#retry-selected").on("click", function () {
                 var job_id_list_json = getJobSelectionJson()
-                $("#trash-job-ids").prop("value", job_id_list_json);
-                $("#trash-jobs-form").submit();
+                $("#retry-job-ids").prop("value", job_id_list_json);
+                $("#retry-jobs-form").submit();
             });
 
+            var archiveDialog = $("#modal-archive-dialog");
+            $("#archive-selected").on("click", function () {
+                var job_id_list_json = getJobSelectionJson()
+                $("#archive-job-ids").prop("value", job_id_list_json);
+                archiveDialog.modal("show");
+            });
+
+            var memOverrideDialog = $("#modal-mem-override-dialog");
+            $("#mem-override-selected").on("click", function () {
+                var job_id_list_json = getJobSelectionJson()
+                $("#mem-override-job-ids").prop("value", job_id_list_json);
+                memOverrideDialog.modal("show");
+            });
         });
     </script>
 {% endblock %}

@@ -8,7 +8,7 @@ import tempfile
 import re
 import term
 import socket
-import math
+import xmlrpclib
 
 from flask.ext.openid import OpenID
 
@@ -17,7 +17,6 @@ import collections
 import ConfigParser, os
 import boto.ec2
 
-#import traceback
 from werkzeug.debug import tbtools
 
 import cluster_monitor
@@ -36,7 +35,6 @@ def _get_current_config():
     return flask.current_app.config
 
 TARGET_ROOT = "/data2/runs"
-
 
 config = LocalProxy(_get_current_config)
 
@@ -342,40 +340,57 @@ def parse_and_validate_jobs(job_ids_json):
         assert job_pattern.match(job_id) != None
     return job_ids
 
-@app.route("/trash-jobs", methods=["POST"])
-@secured
-def trash_job():
-    job_ids = parse_and_validate_jobs(request.values["job-ids"])
-    service = get_wingman_service()
-    for job_id in job_ids:
-        service.delete_run("%s/%s/files" % (TARGET_ROOT, job_id))
-
-    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                            "mv " + " ".join([TARGET_ROOT + "/" + job_id for job_id in job_ids])+ " " + TARGET_ROOT + "/old"])
-
-import xmlrpclib
 
 def get_wingman_service():
     endpoint_url = "http://localhost:3010"
     return xmlrpclib.ServerProxy(endpoint_url)
 
-@app.route("/retry-job")
+def get_run_dir_for_job_name(job_name):
+    return "%s/%s/files" % (TARGET_ROOT, job_name)
+
+@app.route("/archive-jobs", methods=["POST"])
+@secured
+def trash_job():
+    job_ids = parse_and_validate_jobs(request.values["job-ids"])
+    destination = request.values["destination"]
+
+    assert destination in os.listdir(TARGET_ROOT)
+
+    service = get_wingman_service()
+    for job_name in job_ids:
+        service.delete_run(get_run_dir_for_job_name(job_name))
+
+    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
+                            "mv " + " ".join([TARGET_ROOT + "/" + job_id for job_id in job_ids])+ " " + os.path.join(TARGET_ROOT, destination)])
+
+@app.route("/retry-jobs")
 @secured
 def retry_job():
-    job_name = request.values["job"]
     service = get_wingman_service()
-    service.retry_run("%s/%s/files" % (TARGET_ROOT, job_name))
-    return redirect_with_success("retried %d jobs" % (1, "/"))
+    job_ids = parse_and_validate_jobs(request.values["job-ids"])
+    for job_name in job_ids:
+        service.retry_run(get_run_dir_for_job_name(job_name))
+    return redirect_with_success("retried %d jobs" % (len(job_ids), "/"))
 
 
-@app.route("/kill-job")
+@app.route("/kill-jobs")
 @secured
 def kill_job():
-    job_name = request.values["job"]
     service = get_wingman_service()
-    service.kill_run("%s/%s/files" % (TARGET_ROOT, job_name))
-    return redirect_with_success("killed %d jobs" % (1, "/"))
+    job_ids = parse_and_validate_jobs(request.values["job-ids"])
+    for job_name in job_ids:
+        service.kill_run(get_run_dir_for_job_name(job_name))
+    return redirect_with_success("killed %d jobs" % (len(job_ids), "/"))
 
+
+@app.route("/job-set-mem-override")
+@secured
+def job_set_mem_override():
+    service = get_wingman_service()
+    mem_limit = int(request.values["mem-limit"])
+    job_ids = parse_and_validate_jobs(request.values["job-ids"])
+    for job_name in job_ids:
+        service.set_required_mem_override(get_run_dir_for_job_name(job_name), mem_limit)
 
 @app.route("/submit-generic-job-form")
 @secured
