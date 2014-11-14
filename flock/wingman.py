@@ -304,8 +304,9 @@ def handle_kill_pending_tasks(store, queue, batch_size=10):
         queue.kill(tasks)
         # just let the jobs transition to MISSING in next periodic check.  Should we explictly mark these as killed?
         # seems like many ways for that to fall out of sync with the backend queue if we set it to killed without checking
-        for external_id, task_dir in external_id_and_task_dirs:
-            store.set_task_status(task_dir, KILL_SUBMITTED)
+
+    for external_id, task_dir in external_id_and_task_dirs.items():
+        store.set_task_status(task_dir, KILL_SUBMITTED)
     return False
 
 def identify_tasks_which_disappeared(store, queue):
