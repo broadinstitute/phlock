@@ -309,7 +309,7 @@ def identify_tasks_which_disappeared(store, queue):
     external_id_to_task_dir = dict([(external_id, task_dir) for task_dir, external_id in store.find_external_ids_of_submitted()])
 
     external_ids_of_those_we_think_are_submitted = set(external_id_to_task_dir.keys())
-    external_ids_of_actually_in_queue = set(queue.get_jobs_from_external_queue().keys())
+    external_ids_of_actually_in_queue = set([(queue.external_id_prefix + x) for x in queue.get_jobs_from_external_queue().keys()])
 
     # identify tasks which transitioned from running -> not running
     # and call these "missing" (assuming the db still claims these are running).  All other transitions
