@@ -8,11 +8,30 @@ import logging
 
 log = logging.getLogger("flock")
 
+def rewrite_options_with_override(options, override_req_mem_in_megs):
+    options = list(options)
+    if override_req_mem_in_megs != None:
+        # this isn't actually correct parsing of args, but is a hack relying
+        # on it should be rare that we have a param "-l"
+        # drop all of the current constraints
+        i = 0
+        while i < len(options):
+            if options[i] == '-l':
+                # if we have a constraint specified via "-l", drop this and the next parameter
+                del options[i]
+                del options[i]
+
+        # now we should have a clean list of arguments with no "-l h_vmem=16G,virtual_free=16G"
+        # so add on our own
+        options.append("-l")
+        options.append("h_vmem=%dM,virtual_free=%dM" % (override_req_mem_in_megs, override_req_mem_in_megs))
+    return options
+
 class SGEQueue(AbstractQueue):
-    def __init__(self, listener, qsub_options, scatter_qsub_options, name, workdir):
+    def __init__(self, listener, qsub_options, scatter_qsub_options, name, workdir, override_req_mem_in_megs=None):
         super(SGEQueue, self).__init__(listener)
-        self.qsub_options = split_options(qsub_options)
-        self.scatter_qsub_options = split_options(scatter_qsub_options)
+        self.qsub_options = rewrite_options_with_override(split_options(qsub_options))
+        self.scatter_qsub_options = rewrite_options_with_override(split_options(scatter_qsub_options))
         self.external_id_prefix = "SGE:"
 
         self.name = name

@@ -24,7 +24,7 @@ DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id INTEGER, task_dir STRING prima
  "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
  "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
  "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)",
- "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING)",
+ "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING, required_mem_override INTEGER)",
  "CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)"]
 
 # Make run_id auto inc primary key
@@ -280,6 +280,16 @@ class TaskStore:
             db.execute("SELECT run_dir, flock_config_path FROM RUNS WHERE run_id = ?", [run_id])
             return db.fetchall()[0]
 
+    def get_required_mem_override(self, run_id):
+        with self.transaction() as db:
+            db.execute("SELECT required_mem_override FROM RUNS WHERE run_id = ?", [run_id])
+            return db.fetchall()[0]
+
+    def set_required_mem_override(self, run_id, mem_override):
+        with self.transaction() as db:
+            db.execute("UPDATE RUNS set required_mem_override = ? FROM RUNS WHERE run_id = ?", [mem_override, run_id])
+        return True
+
 def handle_kill_pending_tasks(store, queue, batch_size=10):
     log.info("calling handle_kill_pending_tasks")
     external_ids = store.find_tasks_external_id_by_status(KILL_PENDING, limit=batch_size)
@@ -306,6 +316,8 @@ def identify_tasks_which_disappeared(store, queue):
     # should already be performed through other means.
 
     disappeared_external_ids = external_ids_of_those_we_think_are_submitted - external_ids_of_actually_in_queue
+    log.info("external_ids_of_actually_in_queue = %s", external_ids_of_actually_in_queue)
+    log.info("disappeared_external_ids = %s", disappeared_external_ids)
     for external_id in disappeared_external_ids:
         task_dir = external_id_to_task_dir[external_id]
 
@@ -315,7 +327,7 @@ def identify_tasks_which_disappeared(store, queue):
         else:
             store.task_missing(task_dir)
 
-def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
+def submit_created_tasks(listener, store, queue_factory, max_submitted=5):
 
     submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
@@ -345,8 +357,10 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
     for run_id, task_dir, group in tasks:
         if not (run_id in queue_cache):
             run_dir, config_path = store.get_config_path(run_id)
+            required_mem_override = store.get_required_mem_override(run_id)
+
             config = flock_config.load_config([config_path], run_dir, {})
-            queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
+            queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir, required_mem_override)
             queue_cache[run_id] = queue
 
         queue = queue_cache[run_id]
@@ -357,9 +371,9 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
 def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted=100):
 
     if localQueue:
-        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: LocalBgQueue(listener, workdir)
+        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override: LocalBgQueue(listener, workdir)
     else:
-        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir: SGEQueue(listener, qsub_options, scatter_qsub_options, name, workdir)
+        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override: SGEQueue(listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override)
 
     listener = wingman_client.ConsolidatedMonitor(endpoint_url, flock_home)
     counter = 0
@@ -408,7 +422,8 @@ def main():
     main_loop_thread.start()
 
     print "Listening on port %d..." % port
-    for method in ["delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started", "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs"]:
+    for method in ["delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
+                   "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
 
     server.serve_forever()
