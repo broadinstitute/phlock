@@ -283,7 +283,7 @@ class TaskStore:
     def get_required_mem_override(self, run_id):
         with self.transaction() as db:
             db.execute("SELECT required_mem_override FROM RUNS WHERE run_id = ?", [run_id])
-            return db.fetchall()[0]
+            return db.fetchall()[0][0]
 
     def set_required_mem_override(self, run_id, mem_override):
         with self.transaction() as db:
