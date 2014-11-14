@@ -257,7 +257,7 @@ class TaskStore:
             query += " limit %d" % limit
         with self.transaction() as db:
             db.execute(query, [status])
-            recs = db.fetchall()
+            recs = [x[0] for x in db.fetchall()]
         return recs
 
     def find_external_ids_of_submitted(self):
@@ -295,6 +295,8 @@ def handle_kill_pending_tasks(store, queue, batch_size=10):
     external_ids = store.find_tasks_external_id_by_status(KILL_PENDING, limit=batch_size)
     if len(external_ids) > 0:
         log.info("Killing tasks with external_ids: %s", repr(external_ids))
+        # strip off the queue prefix
+        external_ids = [external_id.split(":")[1] for external_id in external_ids]
         tasks = [flock.Task(None, external_id, None, None) for external_id in external_ids]
         queue.kill(tasks)
         # just let the jobs transition to MISSING in next periodic check.  Should we explictly mark these as killed?
