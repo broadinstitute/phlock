@@ -63,6 +63,11 @@ def filter_inactive_instances(instances):
     return [i for i in instances if not (i.state in ['terminated', 'stopped'])]
 
 
+def find_terminated_in_cluster(ec2, cluster_name):
+    instances = ec2.get_only_instances(filters={"instance-state-name":"terminated"})
+    group_name = "@sc-" + cluster_name
+    return [i for i in instances if group_name in [g.name for g in i.groups]]
+
 def find_instances_in_cluster(ec2, cluster_name):
     instances = ec2.get_only_instances()
     instances = filter_inactive_instances(instances)
@@ -350,11 +355,11 @@ def get_run_dir_for_job_name(job_name):
 
 @app.route("/archive-jobs", methods=["POST"])
 @secured
-def trash_job():
+def archive_jobs():
     job_ids = parse_and_validate_jobs(request.values["job-ids"])
     destination = request.values["destination"]
 
-    assert destination in os.listdir(TARGET_ROOT)
+    assert re.match('^[\w-]+$', destination) is not None
 
     service = get_wingman_service()
     for job_name in job_ids:
@@ -363,27 +368,26 @@ def trash_job():
     return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
                             "mv " + " ".join([TARGET_ROOT + "/" + job_id for job_id in job_ids])+ " " + os.path.join(TARGET_ROOT, destination)])
 
-@app.route("/retry-jobs")
+@app.route("/retry-jobs", methods=["POST"])
 @secured
 def retry_job():
     service = get_wingman_service()
     job_ids = parse_and_validate_jobs(request.values["job-ids"])
     for job_name in job_ids:
         service.retry_run(get_run_dir_for_job_name(job_name))
-    return redirect_with_success("retried %d jobs" % (len(job_ids), "/"))
+    return redirect_with_success("retried %d jobs" % len(job_ids), "/")
 
 
-@app.route("/kill-jobs")
+@app.route("/kill-jobs", methods=["POST"])
 @secured
 def kill_job():
     service = get_wingman_service()
     job_ids = parse_and_validate_jobs(request.values["job-ids"])
     for job_name in job_ids:
         service.kill_run(get_run_dir_for_job_name(job_name))
-    return redirect_with_success("killed %d jobs" % (len(job_ids), "/"))
+    return redirect_with_success("killed %d jobs" % len(job_ids), "/")
 
-
-@app.route("/job-set-mem-override")
+@app.route("/job-set-mem-override", methods=["POST"])
 @secured
 def job_set_mem_override():
     service = get_wingman_service()
@@ -391,6 +395,7 @@ def job_set_mem_override():
     job_ids = parse_and_validate_jobs(request.values["job-ids"])
     for job_name in job_ids:
         service.set_required_mem_override(get_run_dir_for_job_name(job_name), mem_limit)
+    return redirect_with_success("changed mem limit on %d jobs" % len(job_ids), "/")
 
 @app.route("/submit-generic-job-form")
 @secured
