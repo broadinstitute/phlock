@@ -544,6 +544,13 @@ def start_tunnel():
 def test_run():
     return run_command(["bash", "-c", "while true ; do echo line ; sleep 1 ; date ; done"])
 
+@app.route("/show-instances")
+def show_instances():
+    ec2 = get_ec2_connection()
+    instances = ec2.get_only_instances()
+    instances = filter_inactive_instances(instances)
+    return flask.render_template("show-instances.html", instances=instances)
+
 @app.route("/prices")
 def show_prices():
     ec2 = get_ec2_connection()
