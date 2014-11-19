@@ -341,7 +341,7 @@ def identify_tasks_which_disappeared(store, queue):
     external_id_to_task_dir = dict(store.find_tasks_external_id_by_status(KILL_SUBMITTED))
     update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, KILLED)
 
-def submit_created_tasks(listener, store, queue_factory, max_submitted=5):
+def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
 
     submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
@@ -386,7 +386,7 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=5):
         queue.submit(run_id, os.path.join(run_dir, task_dir), "scatter" in task_dir)
 
 
-def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted=5):
+def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted=100):
 
     if localQueue:
         queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override: LocalBgQueue(listener, workdir)
