@@ -108,7 +108,6 @@ def run_command(args, title=None):
     terminal = terminal_manager.start_term(args, title=title)
     return flask.redirect("/terminal/" + terminal.id)
 
-
 def run_starcluster_cmd(args):
     return run_command([config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']] + args)
 
@@ -148,9 +147,6 @@ def create_or_login(resp):
     flask.session['email'] = resp.email
     return redirect_with_success("successfully signed in", oid.get_next_url())
 
-
-
-
 @app.route('/login', methods=['GET', 'POST'])
 @oid.loginhandler
 def login():
@@ -170,6 +166,14 @@ def logout():
     flask.session.pop("openid", None)
     return redirect_with_success("You were logged out", "/")
 
+def get_cluster_state(ec2):
+    try:
+        groups = ec2.get_all_security_groups(groupnames=["@sc-%s" % config['CLUSTER_NAME']])
+    except boto.exception.EC2ResponseError:
+        return "stopped"
+    assert len(groups) > 0
+    return "running"
+
 @app.route("/")
 def index():
     ec2 = get_ec2_connection()
@@ -186,7 +190,8 @@ def index():
     active_terminals = terminal_manager.get_active_terminals()
     active_terminals.sort(lambda a, b: cmp(a.start_time, b.start_time))
 
-    state = cluster_manager.get_state()
+    cluster_state = get_cluster_state(ec2)
+    manager_state = cluster_manager.get_manager_state()
 
     request_counts = collections.defaultdict(lambda: 0)
     for request in ec2.get_all_spot_instance_requests(filters={"state":"open"}):
@@ -200,7 +205,21 @@ def index():
         cpus = cpus_per_instance[instance_type] * count
         open_spot_requests.append( (instance_type, status, price, count, cpus) )
 
-    return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, state=state, hourly_rate=hourly_rate, open_spot_requests=open_spot_requests)
+    return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, cluster_state=cluster_state,
+                                 manager_state=manager_state,
+                                 hourly_rate=hourly_rate, open_spot_requests=open_spot_requests)
+
+@app.route("/start-manager")
+@secured
+def start_manager():
+    cluster_manager.start_manager()
+    return redirect_with_success("Manager started", "/")
+
+@app.route("/stop-manager")
+@secured
+def stop_manager():
+    cluster_manager.stop_manager()
+    return redirect_with_success("Manager stopped", "/")
 
 
 @app.route("/kill-terminal/<id>")
@@ -247,7 +266,7 @@ def start_cluster():
     return redirect_to_cluster_terminal()
 
 @secured
-@app.route("/terminate")
+@app.route("/stop-cluster")
 def terminate_cluster():
     cluster_manager.stop_cluster()
     return redirect_to_cluster_terminal()
@@ -289,9 +308,24 @@ CONFIGS = { "bulk": [ {"name":["bulk"], "targetDataset": ["ach2.12"], "targetDat
   "predictiveFeatureSubset": ["top100", "all", "single", "bydomain", "byseqparalog", "physicalinteractors"],
   "predictiveFeatures": [ ["GE"], ["CN"], ["MUT"], ["GE", "CN", "MUT"] ] } ] }
 
+import sshxmlrpc
+import xmlrpclib
+import paramiko
+import threading
+per_thread_cache = threading.local()
+
 def get_jobs_from_remote():
-    import xmlrpclib
-    service = xmlrpclib.ServerProxy("http://localhost:3010")
+    if hasattr(per_thread_cache, "client"):
+        client = per_thread_cache.client
+    else:
+        ec2 = get_ec2_connection()
+        master, key_location = get_master_info(ec2)
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(master.dns_name, username="ubuntu", key_filename=key_location)
+    ssh_transport = client.get_transport()
+    service = xmlrpclib.ServerProxy("http://localhost:3010", transport=sshxmlrpc.Transport(ssh_transport))
+    per_thread_cache.service = service
     return service.get_runs()
 
 
@@ -596,15 +630,25 @@ def init_manager():
 
     cluster_terminal = terminal_manager.start_named_terminal("Cluster monitor", log_file=log_file)
     instance_id = "host=%s, pid=%d" % (socket.getfqdn(), os.getpid())
-    cluster_manager = cluster_monitor.ClusterManager(monitor_parameters, config['CLUSTER_NAME'], config["CLUSTER_TEMPLATE"], cluster_terminal, [config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']], instance_id, get_ec2_connection())
-    cluster_manager.start_manager()
+    cluster_manager = cluster_monitor.ClusterManager(monitor_parameters,
+                                                     config['CLUSTER_NAME'],
+                                                     config["CLUSTER_TEMPLATE"],
+                                                     cluster_terminal,
+                                                     [config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']],
+                                                     instance_id,
+                                                     get_ec2_connection(),
+                                                     config['LOADBALANCE_PID_FILE'])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Start webserver for cluster ui')
     parser.add_argument('--config', dest="config_path", help='config file to use', default=os.path.expanduser("~/.clusterui.config"))
     args = parser.parse_args()
 
-    app.config.update(LOG_FILE='clusterui.log', DEBUG=True, PORT=9935, FLOCK_PATH="/xchip/flock/bin/phlock")
+    app.config.update(LOG_FILE='clusterui.log',
+                      DEBUG=True,
+                      PORT=9935,
+                      FLOCK_PATH="/xchip/flock/bin/phlock",
+                      LOADBALANCE_PID_FILE="loadbalance.pid")
     app.config.from_pyfile(args.config_path)
     load_starcluster_config(app.config)
 

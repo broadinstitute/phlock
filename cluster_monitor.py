@@ -1,10 +1,10 @@
 import subprocess
 import time
 import threading
-import Queue
 import traceback
 from instance_types import cpus_per_instance
 import term
+import os
 
 class Parameters:
     def __init__(self):
@@ -38,12 +38,12 @@ class Parameters:
                 ]
 
 # different states the cluster can be in
+C_STOPPED = "stopped"
+C_RUNNING = "running"
+
+# different states the cluster manager can be in
+CM_RUNNING = "running"
 CM_STOPPED = "stopped"
-CM_STARTING = "starting"
-CM_UPDATING = "updating"
-CM_SLEEPING = "sleeping"
-CM_STOPPING = "stopping"
-CM_DEAD = "dead"
 
 class Timer(object):
     def __init__(self, interval):
@@ -112,9 +112,9 @@ class Mailbox(object):
         self.cv.release()
 
 class ClusterManager(object):
-    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2):
+    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file):
         super(ClusterManager, self).__init__()
-        self.state = CM_DEAD
+        self.manager_state = CM_STOPPED
         self.requested_stop = False
         self.monitor_parameters = monitor_parameters
         self.cluster_name = cluster_name
@@ -127,6 +127,8 @@ class ClusterManager(object):
         self.first_update = True
         self.thread = None
         self.terminated_nodes = set()
+        self.loadbalance_proc = None
+        self.loadbalance_pid_file = loadbalance_pid_file
         import ui
         self.wingman_service = ui.get_wingman_service()
 
@@ -134,33 +136,16 @@ class ClusterManager(object):
         # make sure we don't try to have two running manager threads
         assert self.thread is None or not self.thread.is_alive
 
+        self.mailbox.clear()
         # find out if cluster is already running
-        process = subprocess.Popen(self.cmd_prefix+["listclusters", self.cluster_name], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        output, stderr = process.communicate()
-
-        print "output: %s, stderr=%s" % (repr(output), repr(stderr))
-
-        if "does not exist" in stderr:
-            cluster_is_running = False
-            self.state = CM_STOPPED
-        else:
-            assert "security group" in output
-            cluster_is_running = True
-            self.state = CM_SLEEPING
-            self.first_update = True
+        self.first_update = True
 
         self.thread = threading.Thread(target=self.run)
         self.thread.daemon = True
         self.thread.start()
 
-        if cluster_is_running:
-            self.mailbox.send("start-completed")
-
-    def start_cluster(self):
-        self.mailbox.send("start")
-
-    def stop_cluster(self):
-        self.mailbox.send("stop")
+    def stop_manager(self):
+        self.mailbox.send("stop-manager")
 
     def _wait_for(self, messages, timeout=None):
         print "Waiting for %s" % repr(messages)
@@ -169,25 +154,24 @@ class ClusterManager(object):
         return msg
 
     def _main_loop(self):
-        while True:
-            if self.state == CM_STOPPED:
-                self._wait_for(["start"])
-                self.state = CM_STARTING
+        running = True
+        update_timer = Timer(10)
+        while running:
+            message = self._wait_for(["stop-manager", "loadbalance-exited"], timeout=update_timer.time_remaining)
+            if message == "stop-manager":
+                self._execute_shutdown()
+                running = False
+            elif message == "loadbalance-exited":
+                # restart loadbalancer if it exits
                 self._execute_startup()
-
-            running = True
-            update_timer = Timer(60)
-            while running:
-                message = self._wait_for(["shutdown"], timeout=update_timer.time_remaining)
-                if message == "shutdown":
-                    self._execute_shutdown()
-                    running = False
-                elif update_timer.expired:
-                    self._execute_update()
-                    update_timer.reset()
+            elif update_timer.expired:
+                self._execute_update()
+                update_timer.reset()
 
     def run(self):
         try:
+            self.cluster_state = CM_RUNNING
+            self._execute_startup()
             self._main_loop()
         except:
             exception_message = traceback.format_exc()
@@ -195,32 +179,42 @@ class ClusterManager(object):
             print(exception_message)
             self.terminal.write(exception_message)
 
-        self.state = CM_DEAD
+        self.state = CM_STOPPED
 
-    def get_state(self):
-        return self.state
+    def get_manager_state(self):
+        return self.manager_state
 
     def _run_cmd(self, args, post_execute_msg):
         print "executing %s" % args
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
         mp = term.ManagedProcess(p, p.stdout, self.terminal)
         completion = mp.start_thread()
-        completion.then(lambda: self.mailbox.send(post_execute_msg))
+        if post_execute_msg != None:
+            completion.then(lambda: self.mailbox.send(post_execute_msg))
+        return p
 
     def _run_starcluster_cmd(self, args, post_execute_msg):
-        self._run_cmd(self.cmd_prefix + args, post_execute_msg)
+        return self._run_cmd(self.cmd_prefix + args, post_execute_msg)
 
     def _execute_shutdown(self):
-        self._run_starcluster_cmd(["terminate", "-f", "--confirm", self.cluster_name], "stop-completed")
-        self.state = CM_STOPPING
-        self._wait_for(["stop-completed"])
+        self.terminal.write("Stopping cluster monitor...\n")
+        if self.loadbalance_proc != None:
+            self.loadbalance_proc.kill()
+            self.loadbalance_proc.wait()
+
+        if os.path.exists(self.loadbalance_pid_file):
+            os.unlink(self.loadbalance_pid_file)
 
     def _execute_startup(self):
-        cmd, flag, config = self.cmd_prefix
-        assert flag == "-c"
-        self._run_cmd(["./start_cluster.sh", cmd, config, self.cluster_name, self.cluster_template], "start-completed")
-        self.state = CM_STARTING
-        self._wait_for(["start-completed"])
+        self.terminal.write("Starting cluster monitor...\n")
+        if os.path.exists(self.loadbalance_pid_file):
+            pid = int(open(self.loadbalance_pid_file).read())
+            os.unlink(self.loadbalance_pid_file)
+            os.kill(pid)
+
+        self.loadbalance_proc = self._run_starcluster_cmd(["loadbalance", self.cluster_name, "--max_nodes", str(self.monitor_parameters.max_instances),
+                                               "--add_nodes_per_iter", str(self.monitor_parameters.max_to_add)], "loadbalance-exited")
+        self.manager_state = CM_RUNNING
 
     def _verify_ownership_of_cluster(self, steal_ownership=False):
         security_group_name = "@sc-%s" % self.cluster_name
@@ -257,7 +251,6 @@ class ClusterManager(object):
             self.wingman_service.node_disappeared(alias)
 
     def _execute_update(self):
-        self.state = CM_UPDATING
         if not self.monitor_parameters.is_paused:
             print "verifing ownership"
             self._verify_ownership_of_cluster(steal_ownership=self.first_update)
@@ -265,11 +258,13 @@ class ClusterManager(object):
 
             print "checking terminated nodes"
             self._update_terminated_nodes()
-
-            print "calling scalecluster"
-            args = self.monitor_parameters.generate_args()
-            self._run_starcluster_cmd(["scalecluster", self.cluster_name] + args, "update-completed")
-            self._wait_for(["update-completed"])
         else:
             print "is paused"
 
+    def start_cluster(self):
+        self.terminal.write("Starting cluster...\n")
+        self._run_starcluster_cmd(["start", "--cluster-template", self.cluster_template, self.cluster_name], None)
+
+    def stop_cluster(self):
+        self.terminal.write("Stopping cluster...\n")
+        self._run_starcluster_cmd(["terminate", "-c", "-f", self.cluster_name], None)
