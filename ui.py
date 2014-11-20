@@ -267,7 +267,7 @@ def start_cluster():
 
 @secured
 @app.route("/stop-cluster")
-def terminate_cluster():
+def stop_cluster():
     cluster_manager.stop_cluster()
     return redirect_to_cluster_terminal()
 

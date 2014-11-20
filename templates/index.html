@@ -2,82 +2,104 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 
-  <h1><a href="http://star.mit.edu/cluster/">StarCluster</a> manager {{ config["CLUSTER_NAME"] }}</h1>
-  <h2>cluster state: {{ cluster_state }}</h2>
-    {% if cluster_state == "running" %}
-        <a href="/terminate-cluster">terminate cluster</a>
-    {% else %}
-        <a href="/start-cluster">start cluster</a>
-    {% endif %}
-
-  <h2>manager state: {{ manager_state }}</h2>
-    {% if cluster_state == "running" %}
-        {% if manager_state == "running" %}
-            <a href="/stop-manager">stop manager</a>
+    <h1><a href="http://star.mit.edu/cluster/">StarCluster</a> manager {{ config["CLUSTER_NAME"] }}</h1>
+    <p>cluster state: {{ cluster_state }}
+        {% if cluster_state == "running" %}
+            <a class="btn btn-default" href="/stop-cluster">stop cluster</a>
         {% else %}
-            <a href="/start-manager">start manager</a>
+            <a class="btn btn-default" href="/start-cluster">start cluster</a>
         {% endif %}
+    </p>
+
+    <p>manager state: {{ manager_state }}
+        {% if cluster_state == "running" %}
+            {% if manager_state == "running" %}
+                <a class="btn btn-default" href="/stop-manager">stop manager</a>
+            {% else %}
+                <a class="btn btn-default" href="/start-manager">start manager</a>
+            {% endif %}
+        {% endif %}
+    </p>
+
+    <ul>
+        <li><a href="/prices">prices</a></li>
+        <li><a href="/edit-monitor-parameters">Edit cluster parameters</a></li>
+
+        <li><a href="/start-tunnel">start tunnel</a></li>
+        <li><a href="/submit-batch-job-form">submit batch job</a></li>
+        <li><a href="/job-dashboard">list jobs</a></li>
+        <li><a href="/show-instances">list instances</a></li>
+    </ul>
+
+    {% if instances == [] %}
+        <h2>No instances running</h2>
+    {% else %}
+        <h2>Running instances ({{ hourly_rate }})</h2>
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Type</th>
+                <th>Count</th>
+                <th>CPUs</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for instance_type, count, cpus in instances %}
+                <tr>
+                    <td>{{ instance_type }}</td>
+                    <td>{{ count }}</td>
+                    <td>{{ cpus }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
     {% endif %}
 
-  <ul>
-  	<li><a href="/prices">prices</a></li>
-    <li><a href="/edit-monitor-parameters">Edit cluster parameters</a></li>
+    {% if open_spot_requests == [] %}
+        <h2>No spot requests open</h2>
+    {% else %}
+        <h2>Open requests for additional nodes</h2>
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Price</th>
+                <th>Count</th>
+                <th>CPUs</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for instance_type, status, price, count, cpus in open_spot_requests %}
+                <tr>
+                    <td>{{ instance_type }}</td>
+                    <td>{{ status }}</td>
+                    <td>{{ price }}</td>
+                    <td>{{ count }}</td>
+                    <td>{{ cpus }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
 
-  	<li><a href="/start-tunnel">start tunnel</a></li>
-  	<li><a href="/submit-batch-job-form">submit batch job</a></li>
-  	<li><a href="/job-dashboard">list jobs</a></li>
-    <li><a href="/show-instances">list instances</a></li>
-  </ul>
+    <h2>Running commands:</h2>
+    <ul>
+        {% for terminal in terminals %}
+            {% if terminal.is_running %}
+                <li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>
+            {% endif %}
+        {% endfor %}
+    </ul>
 
-  {% if instances == [] %}
-    <h2>No instances running</h2>
-  {% else %}
-    <h2>Running instances ({{ hourly_rate }})</h2>
-    <table class="table">
-      <thead>
-        <tr><th>Type</th><th>Count</th><th>CPUs</th></tr>
-      </thead>
-      <tbody>
-      {% for instance_type, count, cpus in instances %}
-        <tr><td>{{ instance_type }}</td><td>{{ count }}</td><td>{{ cpus }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  {% endif %}
-
-  {%  if open_spot_requests == [] %}
-    <h2>No spot requests open</h2>
-  {% else %}
-    <h2>Open requests for additional nodes</h2>
-    <table class="table">
-      <thead>
-        <tr><th>Type</th><th>Status</th><th>Price</th><th>Count</th><th>CPUs</th></tr>
-      </thead>
-      <tbody>
-      {% for instance_type, status, price, count, cpus in open_spot_requests %}
-        <tr><td>{{ instance_type }}</td><td>{{ status }}</td><td>{{ price }}</td><td>{{ count }}</td><td>{{ cpus }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  {% endif %}
-
-  <h2>Running commands:</h2>
-  <ul>
-	{% for terminal in terminals %}
-        {% if terminal.is_running %}
-		    <li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>
-        {% endif %}
-	{% endfor %}
-  </ul>
-
-  <h2>Terminated commands:</h2>
-  <ul>
-	{% for terminal in terminals %}
-        {% if not terminal.is_running %}
-    		<li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>
-        {% endif %}
-	{% endfor %}
-  </ul>
+    <h2>Terminated commands:</h2>
+    <ul>
+        {% for terminal in terminals %}
+            {% if not terminal.is_running %}
+                <li><a href="/terminal/{{ terminal.id }}">{{ terminal.title }}</a></li>
+            {% endif %}
+        {% endfor %}
+    </ul>
 
 {% endblock %}
 

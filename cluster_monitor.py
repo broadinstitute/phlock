@@ -185,17 +185,19 @@ class ClusterManager(object):
     def get_manager_state(self):
         return self.manager_state
 
-    def _run_cmd(self, args, post_execute_msg):
+    def _run_cmd(self, args, post_execute_msg, completion_callback=None):
         print "executing %s" % args
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
         mp = term.ManagedProcess(p, p.stdout, self.terminal)
         completion = mp.start_thread()
         if post_execute_msg != None:
             completion.then(lambda: self.mailbox.send(post_execute_msg))
+        if completion_callback != None:
+            completion.then(completion_callback)
         return p
 
-    def _run_starcluster_cmd(self, args, post_execute_msg):
-        return self._run_cmd(self.cmd_prefix + args, post_execute_msg)
+    def _run_starcluster_cmd(self, args, post_execute_msg, completion_callback=None):
+        return self._run_cmd(self.cmd_prefix + args, post_execute_msg, completion_callback=completion_callback)
 
     def _execute_shutdown(self):
         self.terminal.write("Stopping cluster monitor...\n")
@@ -265,8 +267,8 @@ class ClusterManager(object):
 
     def start_cluster(self):
         self.terminal.write("Starting cluster...\n")
-        self._run_starcluster_cmd(["start", "--cluster-template", self.cluster_template, self.cluster_name], None)
+        self._run_starcluster_cmd(["start", "--cluster-template", self.cluster_template, self.cluster_name], None, completion_callback=lambda: self.terminal.write("Cluster started\n"))
 
     def stop_cluster(self):
         self.terminal.write("Stopping cluster...\n")
-        self._run_starcluster_cmd(["terminate", "-c", "-f", self.cluster_name], None)
+        self._run_starcluster_cmd(["terminate", "-c", "-f", self.cluster_name], None, completion_callback=lambda: self.terminal.write("Cluster stopped\n"))
