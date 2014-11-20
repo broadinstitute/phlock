@@ -170,7 +170,7 @@ class ClusterManager(object):
 
     def run(self):
         try:
-            self.cluster_state = CM_RUNNING
+            self.manager_state = CM_RUNNING
             self._execute_startup()
             self._main_loop()
         except:
@@ -179,7 +179,8 @@ class ClusterManager(object):
             print(exception_message)
             self.terminal.write(exception_message)
 
-        self.state = CM_STOPPED
+        self.terminal.write("Cluster monitor terminated")
+        self.manager_state = CM_STOPPED
 
     def get_manager_state(self):
         return self.manager_state
@@ -199,10 +200,12 @@ class ClusterManager(object):
     def _execute_shutdown(self):
         self.terminal.write("Stopping cluster monitor...\n")
         if self.loadbalance_proc != None:
+            self.terminal.write("killing loadbalance process\n")
             self.loadbalance_proc.kill()
             self.loadbalance_proc.wait()
 
         if os.path.exists(self.loadbalance_pid_file):
+            self.terminal.write("removing loadbalance pid file\n")
             os.unlink(self.loadbalance_pid_file)
 
     def _execute_startup(self):
@@ -214,7 +217,6 @@ class ClusterManager(object):
 
         self.loadbalance_proc = self._run_starcluster_cmd(["loadbalance", self.cluster_name, "--max_nodes", str(self.monitor_parameters.max_instances),
                                                "--add_nodes_per_iter", str(self.monitor_parameters.max_to_add)], "loadbalance-exited")
-        self.manager_state = CM_RUNNING
 
     def _verify_ownership_of_cluster(self, steal_ownership=False):
         security_group_name = "@sc-%s" % self.cluster_name
