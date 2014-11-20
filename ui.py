@@ -555,16 +555,11 @@ def edit_monitor_request():
 @secured
 def set_monitor_parameters():
     values = request.values
-    monitor_parameters.is_paused = "is_paused" in values
     monitor_parameters.spot_bid=float(values['spot_bid'])
     monitor_parameters.max_to_add=int(values['max_to_add'])
-    monitor_parameters.time_per_job=int(values['time_per_job'])
-    monitor_parameters.time_to_add_servers_fixed=int(values['time_to_add_servers_fixed'])
-    monitor_parameters.time_to_add_servers_per_server=int(values['time_to_add_servers_per_server'])
     monitor_parameters.instance_type=values['instance_type']
-    monitor_parameters.domain=values['domain']
-    monitor_parameters.jobs_per_server=int(values['jobs_per_server'])
     monitor_parameters.max_instances=int(values['max_instances'])
+    monitor_parameters.min_instances=int(values['min_instances'])
 
     return flask.redirect("/")
 
@@ -581,9 +576,27 @@ def test_run():
 @app.route("/show-instances")
 def show_instances():
     ec2 = get_ec2_connection()
+    spots = ec2.get_all_spot_instance_requests(filters={"state":"open"})
     instances = ec2.get_only_instances()
     instances = filter_inactive_instances(instances)
-    return flask.render_template("show-instances.html", instances=instances)
+    return flask.render_template("show-instances.html", instances=instances, spots=spots)
+
+@app.route("/kill-instances")
+@secured
+def kill_instances():
+    ids = request.values.getlist("id")
+    ec2 = get_ec2_connection()
+    ec2.terminate_instances(instance_ids=ids)
+    return redirect_with_success("terminated %d instances"%len(ids), "/")
+
+
+@app.route("/kill-spots")
+@secured
+def kill_spots():
+    ids = request.values.getlist("id")
+    ec2 = get_ec2_connection()
+    ec2.cancel_spot_instance_requests(ids)
+    return redirect_with_success("cancelled %d spot requests"%len(ids), "/")
 
 @app.route("/prices")
 def show_prices():

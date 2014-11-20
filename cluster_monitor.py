@@ -8,24 +8,21 @@ import os
 
 class Parameters:
     def __init__(self):
-        self.is_paused=True
         self.interval=30
         self.spot_bid=0.01
         self.max_to_add=1
-        self.time_per_job=30 * 60
-        self.time_to_add_servers_fixed=60
-        self.time_to_add_servers_per_server=30
         self.max_instances=10
-        self.instance_type="m3.medium"
-        self.domain="cluster-deadmans-switch"
+        self.min_instances=1
+        self.instance_type="r3.2xlarge"
         self.dryrun=False
-        self.jobs_per_server=1
         self.log_file = None
 
-    def generate_args(self):
+    def get_total_spot_bid(self):
         cpus = cpus_per_instance[self.instance_type]
+        return self.spot_bid * cpus
 
-        return ["--spot_bid", str(self.spot_bid * cpus),
+    def generate_args(self):
+        return ["--spot_bid", str(self.get_total_spot_bid()),
                 "--max_to_add", str(self.max_to_add),
                 "--time_per_job", str(self.time_per_job),
                 "--time_to_add_servers_fixed", str(self.time_to_add_servers_fixed),
@@ -129,6 +126,7 @@ class ClusterManager(object):
         self.terminated_nodes = set()
         self.loadbalance_proc = None
         self.loadbalance_pid_file = loadbalance_pid_file
+        self.loadbalance_start_time = None
         import ui
         self.wingman_service = ui.get_wingman_service()
 
@@ -211,20 +209,23 @@ class ClusterManager(object):
             os.unlink(self.loadbalance_pid_file)
 
     def _execute_startup(self):
+        self.loadbalance_start_time = time.time()
         self.terminal.write("Starting cluster monitor...\n")
         if os.path.exists(self.loadbalance_pid_file):
             pid = int(open(self.loadbalance_pid_file).read())
             os.unlink(self.loadbalance_pid_file)
             os.kill(pid)
 
-        self.loadbalance_proc = self._run_starcluster_cmd(["loadbalance", self.cluster_name, "--max_nodes", str(self.monitor_parameters.max_instances),
-                                               "--add_nodes_per_iter", str(self.monitor_parameters.max_to_add)], "loadbalance-exited")
+        args = ["--max_nodes", str(self.monitor_parameters.max_instances),
+                "--add_nodes_per_iter", str(self.monitor_parameters.max_to_add),
+                "--spot-bid", str(self.monitor_parameters.get_total_spot_bid()),
+                "--min_nodes", str(self.monitor_parameters.min_instances),
+                "--instance-type", self.monitor_parameters.instance_type]
+        self.loadbalance_proc = self._run_starcluster_cmd(["loadbalance", self.cluster_name] + args, "loadbalance-exited")
 
     def _verify_ownership_of_cluster(self, steal_ownership=False):
         security_group_name = "@sc-%s" % self.cluster_name
         security_groups = self.ec2.get_all_security_groups([security_group_name])
-        #if len(security_groups) == 0:
-        #    return
 
         security_group_id = security_groups[0].id
 
@@ -254,16 +255,21 @@ class ClusterManager(object):
         for alias in newly_terminated:
             self.wingman_service.node_disappeared(alias)
 
-    def _execute_update(self):
-        if not self.monitor_parameters.is_paused:
-            print "verifing ownership"
-            self._verify_ownership_of_cluster(steal_ownership=self.first_update)
-            self.first_update = False
+    def _send_heartbeat(self):
+        print "TODO: add back heartbeat"
 
-            print "checking terminated nodes"
-            self._update_terminated_nodes()
-        else:
-            print "is paused"
+    def _execute_update(self):
+        if self.loadbalance_start_time != None and (time.time() - self.loadbalance_start_time > 5*60):
+            if self.loadbalance_proc.is_alive():
+                # only if the loadbalancer has been up for > 5 minutes do we really think its running
+                self._send_heartbeat()
+
+        print "verifing ownership"
+        self._verify_ownership_of_cluster(steal_ownership=self.first_update)
+        self.first_update = False
+
+        print "checking terminated nodes"
+        self._update_terminated_nodes()
 
     def start_cluster(self):
         self.terminal.write("Starting cluster...\n")

@@ -6,13 +6,13 @@
 
   <h1>Active instances</h1>
 
-  <form action="/instance-action">
+    <button id="kill-instances-button" class="btn">Kill</button>
 
   <table class="table">
     <thead>
       <tr>
         <th>
-            <input type="checkbox">
+            <input type="checkbox" id="select-all-instances">
         </th>
 
         <th>
@@ -32,7 +32,7 @@
       {% for i in instances %}
       <tr>
         <td>
-            <input type="checkbox" name="instance-id" value="{{ i.id }}">
+            <input type="checkbox" name="instance-id" value="{{ i.id }}" class="instance-selection">
         </td>
         <td>
           {{ i.id }}
@@ -48,11 +48,101 @@
     </tbody>
   </table>
 
+  <form action="/kill-instances" id="kill-instances-form"  style="display: none">
+    <select id="kill-instance-ids" name="id"></select>
   </form>
+
+  <form action="/kill-spots" id="kill-spots-form" style="display: none">
+    <select id="kill-spot-ids" name="id"></select>
+  </form>
+
+    <h1>Open spot requests</h1>
+    <button id="kill-spots-button" class="btn">Kill</button>
+    <table class="table">
+    <thead>
+      <tr>
+        <th>
+            <input type="checkbox" id="select-all-spots">
+        </th>
+
+        <th>
+          ID
+        </th>
+
+        <th>
+          instance type
+        </th>
+
+        <th>
+            Price
+        </th>
+
+          <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in spots %}
+      <tr>
+        <td>
+            <input type="checkbox" name="instance-id" value="{{ s.id }}" class="spot-selection">
+        </td>
+        <td>
+          {{ s.id }}
+        </td>
+        <td>
+          {{ s.launch_specification.instance_type }}
+        </td>
+        <td>
+          {{ s.price }}
+        </td>
+        <td>
+          {{ s.status.code }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
 {% endblock %}
 
 
 {% block scripts %}
-<script>
-</script>
+    {{ super() }}
+
+    <script>
+        $(function () {
+            // install select-all handler on checkbox
+            $("#select-all-instances").on("click", function () {
+                var isChecked = $(this).is(":checked")
+                $(".instance-selection").prop("checked", isChecked)
+            });
+
+            $("#select-all-spots").on("click", function () {
+                var isChecked = $(this).is(":checked")
+                $(".spot-selection").prop("checked", isChecked)
+            });
+
+            var updateSelection = function (checkboxClass, selectId) {
+                var optionsHtml = [];
+                $("."+checkboxClass).each(function () {
+                    if ($(this).is(":checked")) {
+                        var v = this.value;
+                        optionsHtml.push("<option value='"+v+"'></option>");
+                    }
+                });
+                $("#"+selectId).html(optionsHtml.join())
+            }
+
+            $("#kill-instances-button").on("click", function() {
+                updateSelection("instance-selection", "kill-instance-ids");
+                $("#kill-instances-form").submit();
+            });
+
+            $("#kill-spots-button").on("click", function() {
+                updateSelection("spot-selection", "kill-spot-ids");
+                $("#kill-spots-form").submit();
+            });
+        });
+    </script>
 {% endblock %}
+
