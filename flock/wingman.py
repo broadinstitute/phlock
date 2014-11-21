@@ -484,7 +484,7 @@ def main():
     main_loop_thread.start()
 
     print "Listening on port %d..." % port
-    for method in ["delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
+    for method in ["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                    "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
 
