@@ -79,11 +79,17 @@ class EchoAndCapture(object):
         self.f.close()
 
 import json
+import sshxmlrpc
 import xmlrpclib
+import paramiko
+
 
 def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp, flock_path, sha, nowait):
-    endpoint_url = "http://localhost:3010"
-    service = xmlrpclib.ServerProxy(endpoint_url)
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(host, username="ubuntu", key_filename=key_filename)
+    ssh_transport = client.get_transport()
+    service = xmlrpclib.ServerProxy("http://localhost:3010", transport=sshxmlrpc.Transport(ssh_transport))
 
     try:
         with settings(host_string=host, key_filename=key_filename, user="root"):
