@@ -260,7 +260,7 @@ class ClusterManager(object):
 
     def _execute_update(self):
         if self.loadbalance_start_time != None and (time.time() - self.loadbalance_start_time > 5*60):
-            if self.loadbalance_proc.is_alive():
+            if self.loadbalance_proc.poll() == None:
                 # only if the loadbalancer has been up for > 5 minutes do we really think its running
                 self._send_heartbeat()
 
