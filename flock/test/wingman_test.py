@@ -124,3 +124,31 @@ def test_node_failure():
     # confirm state switched back to WAITING
     runs = store.get_runs()
     assert runs[0]['status']['WAITING'] == 1
+
+@with_setup(setup_run_dir, cleanup_run_dir)
+def test_file_ops():
+    store = wingman.TaskStore(temp_db, "flock_home", endpoint_url="http://invalid:2000")
+
+    store.run_submitted(run_dir, "name", config_path, "{}")
+
+    # write a sample file in the run directory
+    with open(os.path.join(run_dir, "sample"), "w") as fd:
+        fd.write("test-text")
+
+    files = store.get_run_files(run_dir, "*")
+    print files
+    found_dir = False
+    found_file = False
+    for x in files:
+        if x["name"] == "tasks":
+            assert x["is_dir"]
+            found_dir = True
+        if x["name"] == "sample":
+            assert not x["is_dir"]
+            found_file = True
+
+    assert found_dir
+    assert found_file
+
+    file_content = store.get_file_content(run_dir, "sample", 0, 10000)
+    assert file_content == "test-text"

@@ -13,6 +13,7 @@ from queue.sge import SGEQueue
 from queue.local import LocalBgQueue
 import config as flock_config
 import time
+import glob
 
 log = logging.getLogger("monitor")
 
@@ -114,6 +115,44 @@ class TaskStore:
         with self.transaction() as db:
             db.execute("INSERT INTO RUNS (run_dir, name, flock_config_path, parameters) VALUES (?, ?, ?, ?)", [run_dir, name, config_path, parameters])
         return True
+
+    def _assert_path_sane(self, path):
+        components = path.split("/")
+        for c in components:
+            assert c != ".."
+            assert c != "" # make sure no leading slash
+
+    def _assert_run_valid(self, run_dir):
+        with self.transaction() as db:
+            db.execute("SELECT count(1) FROM RUNS WHERE run_dir = ?", [run_dir])
+            counts = db.fetchall()
+            assert len(counts) == 1
+            assert counts[0][0] == 1
+
+    def get_run_files(self, run_dir, wildcard):
+        self._assert_run_valid(run_dir)
+        self._assert_path_sane(wildcard)
+        filenames = glob.glob(os.path.join(run_dir, wildcard))
+
+        result = []
+        for filename in filenames:
+            name = filename[len(run_dir)+1:]
+            s = os.stat(filename)
+            is_dir = os.path.isdir(filename)
+            result.append(dict(name=name, size=s.st_size, mtime=s.st_mtime, is_dir=is_dir))
+
+        return result
+
+    def get_file_content(self, run_dir, path, offset, length):
+        self._assert_run_valid(run_dir)
+        self._assert_path_sane(path)
+        assert length < 1000000
+        fd = open(os.path.join(run_dir, path))
+        fd.seek(offset)
+        buffer = fd.read(length)
+        fd.close()
+
+        return buffer
 
     def run_submitted(self, run_dir, name, config_path, parameters):
         self.run_created(run_dir, name, config_path, parameters)
