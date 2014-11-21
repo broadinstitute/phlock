@@ -3,12 +3,10 @@ import flask
 from flask import request
 import subprocess
 import functools
-import formspec
 import tempfile
 import re
 import term
 import socket
-import xmlrpclib
 
 from flask.ext.openid import OpenID
 
@@ -16,6 +14,7 @@ import boto
 import collections
 import ConfigParser, os
 import boto.ec2
+import boto.sdb
 
 from werkzeug.debug import tbtools
 
@@ -58,6 +57,11 @@ def load_starcluster_config(app_config):
 def get_ec2_connection():
     return boto.ec2.connection.EC2Connection(aws_access_key_id=config['AWS_ACCESS_KEY_ID'],
                                         aws_secret_access_key=config['AWS_SECRET_ACCESS_KEY'])
+
+def get_sdbc_connection():
+    return boto.sdb.connect_to_region("us-east-1", aws_access_key_id=config['AWS_ACCESS_KEY_ID'],
+                                        aws_secret_access_key=config['AWS_SECRET_ACCESS_KEY'])
+
 
 def filter_inactive_instances(instances):
     return [i for i in instances if not (i.state in ['terminated', 'stopped'])]
@@ -431,40 +435,10 @@ def job_set_mem_override():
         service.set_required_mem_override(get_run_dir_for_job_name(job_name), mem_limit)
     return redirect_with_success("changed mem limit on %d jobs" % len(job_ids), "/")
 
-@app.route("/submit-generic-job-form")
-@secured
-def submit_generic_job_form():
-    return flask.render_template("submit-job-form.html", form=formspec.GENERIC_FORM)
-
-
-@app.route("/submit-job-form")
-@secured
-def submit_job_form():
-    return flask.render_template("submit-job-form.html", form=formspec.ATLANTIS_FORM)
-
 
 def get_current_timestamp():
     return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-@app.route("/submit-job", methods=["POST"])
-@secured
-def submit_job_req():
-    template = request.values['template']
-    matching_forms = [f for f in [formspec.ATLANTIS_FORM, formspec.GENERIC_FORM] if f.template == template]
-    assert len(matching_forms) == 1
-    f = matching_forms[0]
-
-    params = parse_reponse(f.fields, request.values, request.files)
-    flock_config = formspec.apply_parameters(f.template, params)
-
-    params["run_id"] = get_current_timestamp()
-
-    if "download" in request.values:
-        response = flask.make_response(flock_config)
-        response.headers["Content-Disposition"] = "attachment; filename=config.flock"
-        return response
-    else:
-        return submit_job(flock_config, params, False)
 
 def submit_job(flock_config, params, nowait):
     assert params["repo"] != None
@@ -517,7 +491,10 @@ def submit_batch_job():
     template_file = request.files["template"]
     template_str = template_file.read()
 
-    config_defs = json.loads(request.values['config_defs'])
+    if request.values['config_defs'] == "":
+        config_defs = [{}]
+    else:
+        config_defs = json.loads(request.values['config_defs'])
 
     timestamp = get_current_timestamp()
     repo = request.values["repo"]
@@ -650,7 +627,7 @@ def init_manager():
                                                      [config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']],
                                                      instance_id,
                                                      get_ec2_connection(),
-                                                     config['LOADBALANCE_PID_FILE'])
+                                                     config['LOADBALANCE_PID_FILE'], get_sdbc_connection())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Start webserver for cluster ui')

@@ -5,6 +5,7 @@ import traceback
 from instance_types import cpus_per_instance
 import term
 import os
+import socket
 
 class Parameters:
     def __init__(self):
@@ -109,7 +110,7 @@ class Mailbox(object):
         self.cv.release()
 
 class ClusterManager(object):
-    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file):
+    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file, sdbc):
         super(ClusterManager, self).__init__()
         self.manager_state = CM_STOPPED
         self.requested_stop = False
@@ -129,6 +130,7 @@ class ClusterManager(object):
         self.loadbalance_start_time = None
         import ui
         self.wingman_service = ui.get_wingman_service()
+        self.sdbc = sdbc
 
     def start_manager(self):
         # make sure we don't try to have two running manager threads
@@ -256,7 +258,12 @@ class ClusterManager(object):
             self.wingman_service.node_disappeared(alias)
 
     def _send_heartbeat(self):
-        print "TODO: add back heartbeat"
+        domain = "%s-heartbeats" % self.cluster_name
+
+        dom = self.sdbc.lookup(domain)
+        assert dom != None
+        self.terminal.write("sending heartbeat to domain %s", domain)
+        dom.put_attributes('heartbeat', {'timestamp': time.time(), 'hostname': socket.getfqdn()})
 
     def _execute_update(self):
         if self.loadbalance_start_time != None and (time.time() - self.loadbalance_start_time > 5*60):
