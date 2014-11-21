@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}List files{% endblock %}
+
+{% block content %}
+
+  <h1>Files for run {{ run_name }} under {{ file_path }}</h1>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>
+            Filename
+        </th>
+
+        <th>
+            Size
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for file in files %}
+      <tr>
+        <td>
+            {% if file.is_dir %}
+            <span class="glyphicon glyphicon-folder-open"></span>
+                <a href="/list-run-files/{{ run_name }}/{{ file.rel_path }}">{{ file.name }}</a>
+            {% else %}
+                <a href="/view-run-file/{{ run_name }}/{{ file.rel_path }}">{{ file.name }}</a>
+            {% endif %}
+        </td>
+        <td>
+            {% if not file.is_dir %}
+                {{ file.size }}
+            {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% endblock %}
+

@@ -318,20 +318,68 @@ import paramiko
 import threading
 per_thread_cache = threading.local()
 
-def get_jobs_from_remote():
+def get_wingman_service():
     if hasattr(per_thread_cache, "client"):
         client = per_thread_cache.client
+        if not client.get_transport().is_active():
+            ec2 = get_ec2_connection()
+            master, key_location = get_master_info(ec2)
+            client.connect(master.dns_name, username="ubuntu", key_filename=key_location)
     else:
         ec2 = get_ec2_connection()
         master, key_location = get_master_info(ec2)
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(master.dns_name, username="ubuntu", key_filename=key_location)
+        per_thread_cache.client = client
+
     ssh_transport = client.get_transport()
     service = xmlrpclib.ServerProxy("http://localhost:3010", transport=sshxmlrpc.Transport(ssh_transport))
-    per_thread_cache.service = service
-    return service.get_runs()
+    # per_thread_cache.service = service
+    return service
 
+def get_jobs_from_remote():
+    return get_wingman_service().get_runs()
+
+@app.route("/list-run-files/<run_name>", defaults=dict(file_path=""))
+@app.route("/list-run-files/<run_name>/<path:file_path>")
+def list_run_files(run_name, file_path):
+
+    run_dir = TARGET_ROOT + "/" + run_name + "/files"
+
+    if file_path == "":
+        wildcard = "*"
+    else:
+        wildcard = file_path+"/*"
+
+    files = get_wingman_service().get_run_files(run_dir, wildcard)
+    for file in files:
+        file["name"] = os.path.basename(file["name"])
+        if file_path == "":
+            file["rel_path"] = file["name"]
+        else:
+            file["rel_path"] = file_path + "/" + file["name"]
+    files.sort(lambda a, b: cmp(a["name"], b["name"]))
+    return flask.render_template("list-run-files.html", files=files, file_path=file_path, run_name=run_name)
+
+@app.route("/view-run-file/<run_name>/<path:file_path>")
+def view_run_file(run_name, file_path):
+    run_dir = TARGET_ROOT + "/" + run_name + "/files"
+
+    service = get_wingman_service()
+    files = service.get_run_files(run_dir, file_path)
+    assert len(files) == 1
+    length = files[0]['size']
+    def stream_file():
+        offset = 0
+        read_size = 50000
+        while offset < length:
+            content = service.get_file_content(run_dir, file_path, offset, read_size)
+            offset += read_size
+            if offset < length:
+                assert len(content) == read_size
+            yield content
+    return flask.Response(stream_file(), mimetype="text/plain")
 
 @app.route("/job-dashboard")
 def job_dashboard():
@@ -383,10 +431,6 @@ def parse_and_validate_jobs(job_ids_json):
         assert job_pattern.match(job_id) != None
     return job_ids
 
-
-def get_wingman_service():
-    endpoint_url = "http://localhost:3010"
-    return xmlrpclib.ServerProxy(endpoint_url)
 
 def get_run_dir_for_job_name(job_name):
     return "%s/%s/files" % (TARGET_ROOT, job_name)
