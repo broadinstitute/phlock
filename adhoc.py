@@ -15,8 +15,11 @@ def project(columns, record):
     return tuple(row)
 
 def cartesian_product(options):
-    k = options.keys()[0]
     rows = []
+    if len(options) == 0:
+        return [{}]
+
+    k = options.keys()[0]
     for v in options[k]:
         rows.append({k:v})
 
