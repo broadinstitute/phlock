@@ -134,7 +134,7 @@ class ClusterManager(object):
 
     def start_manager(self):
         # make sure we don't try to have two running manager threads
-        assert self.thread is None or not self.thread.is_alive
+        assert self.thread is None or not self.thread.is_alive()
 
         self.mailbox.clear()
         # find out if cluster is already running
