@@ -237,7 +237,7 @@ class ClusterManager(object):
             tag = tags[0]
             if tag.value != self.clusterui_identifier:
                 self.state = "broken-lost-ownership"
-                raise Exception("Expected ownership tag to be %s but was %s" % (repr(self.clusterui_identifier, tag.value)))
+                raise Exception("Expected ownership tag to be %s but was %s" % (repr(self.clusterui_identifier), repr(tag.value)))
 
     def _update_terminated_nodes(self):
         import ui
