@@ -9,7 +9,7 @@ log = logging.getLogger("flock")
 Config = collections.namedtuple("Config", ["base_run_dir", "executor", "invoke", "bsub_options", "qsub_options",
                                            "scatter_bsub_options", "scatter_qsub_options", "workdir", "name", "run_id",
                                            "wingman_host",
-                                           "wingman_port", "environment_variables"])
+                                           "wingman_port", "environment_variables", "language"])
 
 def parse_config(f, multivalue_keys):
     props = {}
@@ -54,7 +54,7 @@ def parse_config(f, multivalue_keys):
 
 
 def load_config(filenames, run_id, overrides):
-    config = {"bsub_options": "", "qsub_options": "", "workdir": ".", "name": "", "base_run_dir": ".", "wingman_host":None, "wingman_port":3010, "setenv":[]}
+    config = {"bsub_options": "", "qsub_options": "", "workdir": ".", "name": "", "base_run_dir": ".", "wingman_host":None, "wingman_port":3010, "setenv":[], "language": "R"}
     for filename in filenames:
         log.info("Reading config from %s", filename)
         with open(filename) as f:

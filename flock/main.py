@@ -92,7 +92,7 @@ def main(cmd_line_args=None):
             log.warn("%s already exists -- removing before running job", run_id)
             shutil.rmtree(run_id)
 
-        f.run(run_id, config.invoke, not args.nowait, args.maxsubmit, test_job_count, config.environment_variables)
+        f.run(run_id, config.invoke, not args.nowait, args.maxsubmit, test_job_count, config.environment_variables, config.language)
     elif command == "submit":
         wingman_host = config.wingman_host
         if wingman_host == None:

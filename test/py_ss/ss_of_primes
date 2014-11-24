@@ -1,0 +1,5 @@
+executor: localbg
+language: python
+invoke: |
+import sum_of_squares
+sum_of_squares.do([2,3,4])

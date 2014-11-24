@@ -149,22 +149,32 @@ def dump_file(filename):
     else:
         sys.stdout.write("  [ File %s does not exist ]" % filename)
 
-
-def write_files_for_running(flock_home, notify_command, run_id, script_body, test_job_count, environment_variables):
+def write_python_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body):
     run_dir = os.path.abspath(run_id)
-    if os.path.exists(run_id):
-        raise Exception("\"%s\" already exists. Aborting.", run_id)
-
-    os.makedirs("%s/temp" % run_id)
-    os.makedirs("%s/tasks-init/scatter" % run_id)
-    os.makedirs("%s/tasks" % run_id)
     temp_run_script = "%s/tasks-init/scatter/scatter.R" % run_id
-    environment_script = "%s/env.sh" % run_id
+    with open(temp_run_script, "w") as fd:
+        fd.write("flock_settings = dict(flock_starting_file='%s/tasks-init/scatter/started-time.txt',\n" % run_dir)
+        fd.write("  flock_completion_file='%s/tasks-init/scatter/finished-time.txt',\n" % run_dir)
+        fd.write("  flock_test_job_count=%s,\n" % (repr(test_job_count)))
+        fd.write("  flock_version=%s,\n" % repr(FLOCK_VERSION.split(".")))
+        fd.write("  flock_run_dir='%s',\n" % (run_dir))
+        fd.write("  flock_home='%s',\n" % (flock_home))
+        fd.write("  flock_notify_command=%s)\n" % repr(notify_command))
 
-    with open(environment_script, "w") as fd:
-        for stmt in environment_variables:
-            fd.write("export %s\n" % (stmt))
+        fd.write("with open(flock_starting_file, 'w') as fd:\n"
+                 "  fd.write(format(Sys.time(), '%a %b %d %X %Y'))\n")
 
+        fd.write("execfile('%s/flock_support.R');\n" % flock_home)
+        fd.write(script_body)
+        fd.write("# write out record that task completed successfully\n"
+                 "with open(flock_completion_file, 'w') as fd:\n"
+                 "  fd.write(format(Sys.time(), '%a %b %d %X %Y'), fileConn)\n")
+    return temp_run_script
+
+
+def write_r_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body):
+    run_dir = os.path.abspath(run_id)
+    temp_run_script = "%s/tasks-init/scatter/scatter.R" % run_id
     with open(temp_run_script, "w") as fd:
         fd.write("flock_starting_file <- '%s/tasks-init/scatter/started-time.txt'\n" % run_dir)
         fd.write("flock_completion_file <- '%s/tasks-init/scatter/finished-time.txt'\n" % run_dir)
@@ -189,10 +199,40 @@ def write_files_for_running(flock_home, notify_command, run_id, script_body, tes
         writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
         close(fileConn)
         """)
+    return temp_run_script
+
+def write_files_for_running(flock_home, notify_command, run_id, script_body, test_job_count, environment_variables, language):
+    run_dir = os.path.abspath(run_id)
+    if os.path.exists(run_id):
+        raise Exception("\"%s\" already exists. Aborting.", run_id)
+
+    os.makedirs("%s/temp" % run_id)
+    os.makedirs("%s/tasks-init/scatter" % run_id)
+    os.makedirs("%s/tasks" % run_id)
+    environment_script = "%s/env.sh" % run_id
+
+    with open(environment_script, "w") as fd:
+        for stmt in environment_variables:
+            fd.write("export %s\n" % (stmt))
+
+    if language == "R":
+        temp_run_script = write_r_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body)
+    elif language == "python":
+        temp_run_script = write_python_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body)
+    else:
+        raise Exception("Unknown language: %s" % language)
+
+    #TODO: use default, but support override
+    python_path = "python"
 
     with open("%s/tasks-init/scatter/task.sh" % run_id, "w") as fd:
         fd.write("source %s\n" % environment_script)
-        fd.write("exec R --vanilla < %s\n" % temp_run_script)
+        if language == "R":
+            fd.write("exec R --vanilla < %s\n" % temp_run_script)
+        elif language == "python":
+            fd.write("exec %s %s" % (python_path, temp_run_script))
+        else:
+            raise Exception("Unknown language: %s" % language)
 
     task_definition_path = "%s/tasks-init/task_dirs.txt" % run_id
     with open(task_definition_path, "w") as fd:
@@ -242,8 +282,8 @@ class Flock(object):
             log.warn("Run failed (%d tasks failed). Exitting", len(failures))
             sys.exit(1)
 
-    def run(self, run_id, script_body, wait, maxsubmit, test_job_count, environment_variables, no_poll=False):
-        write_files_for_running(self.flock_home, self.notify_command, run_id, script_body, test_job_count, environment_variables)
+    def run(self, run_id, script_body, wait, maxsubmit, test_job_count, environment_variables, language, no_poll=False):
+        write_files_for_running(self.flock_home, self.notify_command, run_id, script_body, test_job_count, environment_variables, language)
 
         if not no_poll:
             self.poll_once(run_id, maxsubmit)
