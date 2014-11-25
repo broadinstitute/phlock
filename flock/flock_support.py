@@ -1,6 +1,7 @@
 import os
 import math
 import pickle
+import subprocess
 
 global_flock_settings = None
 
@@ -86,4 +87,10 @@ def flock_run(inputs, module_path, task_function_name, flock_settings=None, gath
   
   if flock_settings["flock_notify_command"] != None:
     subprocess.check_call("%s taskset %s %s" % (flock_settings["flock_notify_command"], flock_run_dir, taskset_file))
-  
+
+def run_commands(commands):
+  flock_run(commands, [], "flock_support:execute_shell_command")
+
+def execute_shell_command(common_state, per_task_state):
+  subprocess.check_call(per_task_state['flock_per_task_state'], shell=True)
+   

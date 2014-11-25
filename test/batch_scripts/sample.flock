@@ -1,0 +1,6 @@
+executor: localbg
+language: python
+invoke: |
+import flock_support
+commands = open("./test/batch_scripts/commands").readlines()
+flock_support.run_commands(commands)

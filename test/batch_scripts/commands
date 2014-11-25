@@ -1,0 +1,3 @@
+ls /tmp
+mkdir /tmp # fails
+ls /
