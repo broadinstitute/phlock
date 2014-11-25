@@ -1,5 +1,7 @@
 executor: localbg
 language: python
 invoke: |
+import sys
+sys.path.append("./test/py_ss")
 import sum_of_squares
 sum_of_squares.do([2,3,4])

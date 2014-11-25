@@ -149,11 +149,17 @@ def dump_file(filename):
     else:
         sys.stdout.write("  [ File %s does not exist ]" % filename)
 
-def write_python_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body):
+def write_python_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body, python_path):
     run_dir = os.path.abspath(run_id)
-    temp_run_script = "%s/tasks-init/scatter/scatter.R" % run_id
+    temp_run_script = "%s/tasks-init/scatter/scatter.py" % run_id
     with open(temp_run_script, "w") as fd:
-        fd.write("flock_settings = dict(flock_starting_file='%s/tasks-init/scatter/started-time.txt',\n" % run_dir)
+        fd.write("import time\n")
+        fd.write("import sys\n")
+        fd.write("sys.path.append(%s)\n" % repr(flock_home))
+        fd.write("import flock_support\n")
+        #fd.write("sys.path.append(%s)\n" % repr(run_dir))
+        fd.write("flock_support.global_flock_settings = dict(flock_starting_file='%s/tasks-init/scatter/started-time.txt',\n" % run_dir)
+        fd.write("  python_path=%s,\n" % repr(python_path))
         fd.write("  flock_completion_file='%s/tasks-init/scatter/finished-time.txt',\n" % run_dir)
         fd.write("  flock_test_job_count=%s,\n" % (repr(test_job_count)))
         fd.write("  flock_version=%s,\n" % repr(FLOCK_VERSION.split(".")))
@@ -161,14 +167,14 @@ def write_python_scatter_script(run_id, test_job_count, flock_home, notify_comma
         fd.write("  flock_home='%s',\n" % (flock_home))
         fd.write("  flock_notify_command=%s)\n" % repr(notify_command))
 
-        fd.write("with open(flock_starting_file, 'w') as fd:\n"
-                 "  fd.write(format(Sys.time(), '%a %b %d %X %Y'))\n")
+        fd.write("with open(flock_support.global_flock_settings['flock_starting_file'], 'w') as fd:\n"
+                 "  fd.write(time.strftime('%a %b %d %X %Y', time.localtime()))\n")
 
-        fd.write("execfile('%s/flock_support.R');\n" % flock_home)
+        #fd.write("execfile('%s/flock_support.py', dict(flock_run=flock_support.flock_run, flock_settings=flock_settings));\n" % flock_home)
         fd.write(script_body)
         fd.write("# write out record that task completed successfully\n"
-                 "with open(flock_completion_file, 'w') as fd:\n"
-                 "  fd.write(format(Sys.time(), '%a %b %d %X %Y'), fileConn)\n")
+                 "with open(flock_support.global_flock_settings['flock_completion_file'], 'w') as fd:\n"
+                 "  fd.write(time.strftime('%a %b %d %X %Y', time.localtime()))\n")
     return temp_run_script
 
 
@@ -215,15 +221,16 @@ def write_files_for_running(flock_home, notify_command, run_id, script_body, tes
         for stmt in environment_variables:
             fd.write("export %s\n" % (stmt))
 
+    #TODO: use default, but support override
+    python_path = "python"
+
     if language == "R":
         temp_run_script = write_r_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body)
     elif language == "python":
-        temp_run_script = write_python_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body)
+        temp_run_script = write_python_scatter_script(run_id, test_job_count, flock_home, notify_command, script_body, python_path)
     else:
         raise Exception("Unknown language: %s" % language)
 
-    #TODO: use default, but support override
-    python_path = "python"
 
     with open("%s/tasks-init/scatter/task.sh" % run_id, "w") as fd:
         fd.write("source %s\n" % environment_script)
