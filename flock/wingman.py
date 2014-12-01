@@ -159,7 +159,7 @@ class TaskStore:
 
         notify_command = format_notify_command(self.flock_home, self.endpoint_url)
         config = flock_config.load_config([config_path], run_dir, {})
-        task_definition_path = flock.write_files_for_running(self.flock_home, notify_command, run_dir, config.invoke, None, config.environment_variables)
+        task_definition_path = flock.write_files_for_running(self.flock_home, notify_command, run_dir, config.invoke, None, config.environment_variables, config.language)
         return self.taskset_created(run_dir, task_definition_path)
 
     def taskset_created(self, run_dir, task_definition_path):
