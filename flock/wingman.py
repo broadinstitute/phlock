@@ -263,8 +263,8 @@ class TaskStore:
             rows = db.fetchall()
             if len(rows) == 1:
                 run_id = rows[0][0]
-
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [WAITING, run_id, FAILED, KILLED])
+                # treating MISSING as the same as FAILED.  Perhaps there should be something that transforms MISSING tasks to FAILED after some timeout
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?, ?)", [WAITING, run_id, FAILED, KILLED, MISSING])
         return True
 
     def kill_run(self, run_dir):
