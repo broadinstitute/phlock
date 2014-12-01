@@ -60,6 +60,10 @@ def test_successful_run_lifecycle():
     assert len(runs) == 1
     assert runs[0]['status']['WAITING'] == 1
 
+    # also make sure the detailed version works
+    tasks = store.get_run_tasks(runs[0]['run_dir'])
+    assert len(tasks) == 1
+
     # notify the store that the task started and then completed successfully
     store.task_started(task_dir, "node01")
     runs = store.get_runs()

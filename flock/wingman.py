@@ -92,6 +92,16 @@ class TaskStore:
             self._active_transaction = TransactionContext(self._connection, self._lock)
         return self._active_transaction
 
+    def get_run_tasks(self, run_dir):
+        with self.transaction() as db:
+            result = []
+            run_id = self._assert_run_valid(run_dir)
+            db.execute("SELECT task_dir, status, try_count, node_name, external_id, group_number FROM TASKS WHERE run_id = ?", [run_id])
+            for task_dir, status, try_count, node_name, external_id, group_number in db.fetchall():
+                task = {'task_dir':task_dir, 'status':status_code_to_name[status], 'try_count': try_count, 'node_name':node_name, 'external_id':external_id, 'group_number':group_number}
+                result.append(task)
+            return result
+
     def get_runs(self):
         with self.transaction() as db:
             db.execute("SELECT run_id, run_dir, name, parameters FROM RUNS")
@@ -124,10 +134,11 @@ class TaskStore:
 
     def _assert_run_valid(self, run_dir):
         with self.transaction() as db:
-            db.execute("SELECT count(1) FROM RUNS WHERE run_dir = ?", [run_dir])
+            db.execute("SELECT count(1), min(run_id) FROM RUNS WHERE run_dir = ?", [run_dir])
             counts = db.fetchall()
             assert len(counts) == 1
             assert counts[0][0] == 1
+            return counts[0][1]
 
     def get_run_files(self, run_dir, wildcard):
         self._assert_run_valid(run_dir)
@@ -485,7 +496,8 @@ def main():
 
     print "Listening on port %d..." % port
     for method in ["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
-                   "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override"]:
+                   "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override",
+                   "get_run_tasks"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
 
     server.serve_forever()
