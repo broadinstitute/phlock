@@ -334,12 +334,25 @@ def get_wingman_service():
         per_thread_cache.client = client
 
     ssh_transport = client.get_transport()
-    service = xmlrpclib.ServerProxy("http://localhost:3010", transport=sshxmlrpc.Transport(ssh_transport))
+    service = xmlrpclib.ServerProxy("http://localhost:3010", transport=sshxmlrpc.Transport(ssh_transport), allow_none=True)
     # per_thread_cache.service = service
     return service
 
 def get_jobs_from_remote():
     return get_wingman_service().get_runs()
+
+@app.route("/run/<run_name>")
+def show_run(run_name):
+    run_dir = TARGET_ROOT + "/" + run_name + "/files"
+    tasks = get_wingman_service().get_run_tasks(run_dir)
+    def rewrite_task(t):
+        t = dict(t)
+        # drop run prefix
+        t['task_dir'] = t['task_dir'][len(TARGET_ROOT)+3+len("files")+len(run_name):]
+        return t
+    tasks = [rewrite_task(t) for t in tasks]
+    return flask.render_template("show-run.html", run_name=run_name, tasks=tasks)
+
 
 @app.route("/list-run-files/<run_name>", defaults=dict(file_path=""))
 @app.route("/list-run-files/<run_name>/<path:file_path>")
@@ -581,6 +594,7 @@ def set_monitor_parameters():
     monitor_parameters.instance_type=values['instance_type']
     monitor_parameters.max_instances=int(values['max_instances'])
     monitor_parameters.min_instances=int(values['min_instances'])
+    monitor_parameters.job_wait_time = int(values['job_wait_time'])
 
     return flask.redirect("/")
 

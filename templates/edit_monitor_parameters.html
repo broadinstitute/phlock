@@ -49,6 +49,17 @@
         </div>
 
         <div class="form-group">
+            <label for="job_wait_time" class="col-sm-3 control-label">
+                Maximum wait time for a job before adding nodes, seconds
+            </label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="job_wait_time" name="job_wait_time"
+                       value="{{ param.job_wait_time }}">
+            </div>
+        </div>
+
+        <div class="form-group">
             <div class="col-sm-offset-3 col-sm-10">
                 <button name="submit" type="submit" class="btn btn-default">Update</button>
             </div>

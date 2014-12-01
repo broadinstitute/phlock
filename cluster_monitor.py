@@ -17,6 +17,7 @@ class Parameters:
         self.instance_type="r3.2xlarge"
         self.dryrun=False
         self.log_file = None
+        self.job_wait_time = 300
 
     def get_total_spot_bid(self):
         cpus = cpus_per_instance[self.instance_type]
@@ -222,7 +223,8 @@ class ClusterManager(object):
                 "--add_nodes_per_iter", str(self.monitor_parameters.max_to_add),
                 "--spot-bid", str(self.monitor_parameters.get_total_spot_bid()),
                 "--min_nodes", str(self.monitor_parameters.min_instances),
-                "--instance-type", self.monitor_parameters.instance_type]
+                "--instance-type", self.monitor_parameters.instance_type,
+                "--job_wait_time", str(self.monitor_parameters.job_wait_time)]
         self.loadbalance_proc = self._run_starcluster_cmd(["loadbalance", self.cluster_name] + args, "loadbalance-exited")
 
     def _verify_ownership_of_cluster(self, steal_ownership=False):
