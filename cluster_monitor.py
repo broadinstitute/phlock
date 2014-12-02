@@ -204,8 +204,11 @@ class ClusterManager(object):
     def _kill_loadbalance_proc(self):
         if self.loadbalance_proc != None:
             self.terminal.write("killing loadbalance process\n")
-            self.loadbalance_proc.kill()
-            self.loadbalance_proc.wait()
+            try:
+                self.loadbalance_proc.kill()
+                self.loadbalance_proc.wait()
+            except OSError:
+                pass # swallow exception if pid does not exist
 
         if os.path.exists(self.loadbalance_pid_file):
             pid = int(open(self.loadbalance_pid_file).read())
