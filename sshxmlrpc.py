@@ -15,6 +15,14 @@ class SSHHTTPConnection(httplib.HTTPConnection):
                                                    (self.host,self.port),
                                                    source_address)
 
+        # hack to work around issue in using paraminko channels as a "socket".  See http://bugs.python.org/issue7806
+        # for details.  The gist is socket.close() doesn't actually close a socket in python.  It only removes a reference
+        # and allows the gc reference counting to perform the actual close.
+        def monkey_patched_close():
+            print "ignoring close"
+
+        self.sock.close = monkey_patched_close
+
         if self._tunnel_host:
             self._tunnel()
 

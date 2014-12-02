@@ -25,6 +25,7 @@ import prices
 from instance_types import cpus_per_instance, instance_sizes
 import batch_submit
 import json
+import base64
 
 oid = OpenID(None, "/tmp/clusterui-openid")
 terminal_manager = term.TerminalManager()
@@ -399,12 +400,21 @@ def view_run_file(run_name, file_path):
         offset = 0
         read_size = 50000
         while offset < length:
-            content = service.get_file_content(run_dir, file_path, offset, read_size)
+            payload = service.get_file_content(run_dir, file_path, offset, read_size)
+            content = base64.standard_b64decode(payload['data'])
             offset += read_size
             if offset < length:
                 assert len(content) == read_size
             yield content
-    return flask.Response(stream_file(), mimetype="text/plain")
+
+    # hack: is there some place we can ask something more complete for a mimetype given an extension?
+    mimetype="application/octet-stream"
+    if file_path.endswith(".pdf"):
+        mimetype="application/pdf"
+    elif file_path.endswith(".txt"):
+        mimetype="text/plain"
+
+    return flask.Response(stream_file(), mimetype=mimetype)
 
 @app.route("/job-dashboard")
 def job_dashboard():
