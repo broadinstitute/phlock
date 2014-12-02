@@ -179,6 +179,7 @@ class ClusterManager(object):
 
             print(exception_message)
             self.terminal.write(exception_message)
+            self._kill_loadbalance_proc()
 
         self.terminal.write("Cluster monitor terminated")
         self.manager_state = CM_STOPPED
@@ -200,24 +201,25 @@ class ClusterManager(object):
     def _run_starcluster_cmd(self, args, post_execute_msg, completion_callback=None):
         return self._run_cmd(self.cmd_prefix + args, post_execute_msg, completion_callback=completion_callback)
 
-    def _execute_shutdown(self):
-        self.terminal.write("Stopping cluster monitor...\n")
+    def _kill_loadbalance_proc(self):
         if self.loadbalance_proc != None:
             self.terminal.write("killing loadbalance process\n")
             self.loadbalance_proc.kill()
             self.loadbalance_proc.wait()
 
         if os.path.exists(self.loadbalance_pid_file):
-            self.terminal.write("removing loadbalance pid file\n")
+            pid = int(open(self.loadbalance_pid_file).read())
             os.unlink(self.loadbalance_pid_file)
+            os.kill(pid)
+
+    def _execute_shutdown(self):
+        self.terminal.write("Stopping cluster monitor...\n")
+        self._kill_loadbalance_proc()
 
     def _execute_startup(self):
         self.loadbalance_start_time = time.time()
         self.terminal.write("Starting cluster monitor...\n")
-        if os.path.exists(self.loadbalance_pid_file):
-            pid = int(open(self.loadbalance_pid_file).read())
-            os.unlink(self.loadbalance_pid_file)
-            os.kill(pid)
+        self._kill_loadbalance_proc()
 
         args = ["--max_nodes", str(self.monitor_parameters.max_instances),
                 "--add_nodes_per_iter", str(self.monitor_parameters.max_to_add),
