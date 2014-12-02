@@ -323,12 +323,14 @@ def get_wingman_service():
             ec2 = get_ec2_connection()
             master, key_location = get_master_info(ec2)
             client.connect(master.dns_name, username="ubuntu", key_filename=key_location)
+            client.get_transport().set_keepalive(10)
     else:
         ec2 = get_ec2_connection()
         master, key_location = get_master_info(ec2)
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(master.dns_name, username="ubuntu", key_filename=key_location)
+        client.get_transport().set_keepalive(10)
         per_thread_cache.client = client
 
     ssh_transport = client.get_transport()
