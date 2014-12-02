@@ -95,6 +95,7 @@ class TaskStore:
     def get_run_tasks(self, run_dir):
         with self.transaction() as db:
             result = []
+            log.warn("getting run_id")
             run_id = self._assert_run_valid(run_dir)
             db.execute("SELECT task_dir, status, try_count, node_name, external_id, group_number FROM TASKS WHERE run_id = ?", [run_id])
             for task_dir, status, try_count, node_name, external_id, group_number in db.fetchall():
@@ -265,7 +266,7 @@ class TaskStore:
 
     def node_disappeared(self, node_name):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE node_name = ?", [WAITING, node_name])
+            db.execute("UPDATE TASKS SET status = ? WHERE node_name = ? and status = ?", [WAITING, node_name, STARTED])
         return True
 
     def retry_run(self, run_dir):
@@ -344,8 +345,8 @@ class TaskStore:
         return True
 
 def handle_kill_pending_tasks(store, queue, batch_size=10):
-    log.info("calling handle_kill_pending_tasks")
     external_id_and_task_dirs = dict(store.find_tasks_external_id_by_status(KILL_PENDING, limit=batch_size))
+    log.info("handle_kill_pending_tasks: %s", repr(external_id_and_task_dirs))
     if len(external_id_and_task_dirs) > 0:
         # strip off the queue prefix
         external_ids = [external_id.split(":")[1] for external_id in external_id_and_task_dirs.keys()]
@@ -358,6 +359,7 @@ def handle_kill_pending_tasks(store, queue, batch_size=10):
 
     for external_id, task_dir in external_id_and_task_dirs.items():
         store.set_task_status(task_dir, KILL_SUBMITTED)
+
     return False
 
 def update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, state_to_use_if_missing):
@@ -491,7 +493,7 @@ def main():
 
     main_loop_thread = threading.Thread(target=lambda: main_loop(endpoint_url, flock_home, store, localQueue=(queue == 'local')))
     main_loop_thread.daemon = True
-    server = SimpleXMLRPCServer(("0.0.0.0", port))
+    server = SimpleXMLRPCServer(("0.0.0.0", port), allow_none=True)
     main_loop_thread.start()
 
     print "Listening on port %d..." % port
