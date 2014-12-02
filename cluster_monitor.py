@@ -282,7 +282,7 @@ class ClusterManager(object):
 
     def start_cluster(self):
         self.terminal.write("Starting cluster...\n")
-        self._run_starcluster_cmd(["start", "--cluster-template", self.cluster_template, self.cluster_name], None, completion_callback=lambda: self.terminal.write("Cluster started\n"))
+        self._run_starcluster_cmd(["start", "--cluster-template", self.cluster_template, self.cluster_name, "--config-on-master"], None, completion_callback=lambda: self.terminal.write("Cluster started\n"))
 
     def stop_cluster(self):
         self.terminal.write("Stopping cluster...\n")
