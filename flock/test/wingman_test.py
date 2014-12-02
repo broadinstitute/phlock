@@ -154,5 +154,6 @@ def test_file_ops():
     assert found_dir
     assert found_file
 
+    import base64
     file_content = store.get_file_content(run_dir, "sample", 0, 10000)
-    assert file_content == "test-text"
+    assert base64.standard_b64decode(file_content['data']) == "test-text"

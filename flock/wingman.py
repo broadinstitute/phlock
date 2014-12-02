@@ -14,6 +14,8 @@ from queue.local import LocalBgQueue
 import config as flock_config
 import time
 import glob
+import base64
+import hashlib
 
 log = logging.getLogger("monitor")
 
@@ -164,7 +166,7 @@ class TaskStore:
         buffer = fd.read(length)
         fd.close()
 
-        return buffer
+        return dict(data=base64.standard_b64encode(buffer), md5=hashlib.md5(buffer).hexdigest())
 
     def run_submitted(self, run_dir, name, config_path, parameters):
         self.run_created(run_dir, name, config_path, parameters)
