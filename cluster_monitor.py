@@ -210,7 +210,10 @@ class ClusterManager(object):
         if os.path.exists(self.loadbalance_pid_file):
             pid = int(open(self.loadbalance_pid_file).read())
             os.unlink(self.loadbalance_pid_file)
-            os.kill(pid)
+            try:
+                os.kill(pid)
+            except OSError:
+                pass # swallow exception if pid does not exist
 
     def _execute_shutdown(self):
         self.terminal.write("Stopping cluster monitor...\n")
