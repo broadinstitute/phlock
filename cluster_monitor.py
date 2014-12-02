@@ -125,7 +125,7 @@ class ClusterManager(object):
         self.cluster_template = cluster_template
         self.first_update = True
         self.thread = None
-        self.terminated_nodes = set()
+        self.instance_id_to_alias = {}
         self.loadbalance_proc = None
         self.loadbalance_pid_file = loadbalance_pid_file
         self.loadbalance_start_time = None
@@ -245,19 +245,33 @@ class ClusterManager(object):
 
     def _update_terminated_nodes(self):
         import ui
-        instances = ui.find_terminated_in_cluster(self.ec2, self.cluster_name)
-        aliases = set()
+
+        # update instance_id_to_alias with running instances that have an alias set
+        instances = ui.find_instances_in_cluster(self.ec2, self.cluster_name)
         for instance in instances:
             if "alias" in instance.tags:
-                aliases.add(instances.tags["alias"])
-        # find the aliases which have been terminated since we last checked
-        newly_terminated = aliases - self.terminated_nodes
-        # remember what nodes were terminated on this pass
-        self.terminated_nodes = aliases
+                alias = instance.tags["alias"]
+                self.instance_id_to_alias[instance.id] = alias
 
-        print "Terminated nodes: %s, new: %s" % (self.terminated_nodes, newly_terminated)
-        for alias in newly_terminated:
+        newly_terminated_aliases = set()
+        newly_terminated_ids = set()
+
+        # look up each terminated instance's id to see if it was running previously
+        terminated_instances = ui.find_terminated_in_cluster(self.ec2)
+        for instance in terminated_instances:
+            if instance.id in self.instance_id_to_alias:
+                alias = self.instance_id_to_alias[instance.id]
+                newly_terminated_aliases.add(alias)
+                newly_terminated_ids.add(instance.id)
+
+        print "Terminated nodes: %s, new: %s" % (terminated_instances, newly_terminated_aliases)
+        for alias in newly_terminated_aliases:
             self.wingman_service.node_disappeared(alias)
+
+        # forget about these id before the next check
+        for id in newly_terminated_ids:
+            del self.instance_id_to_alias[id]
+
 
     def _send_heartbeat(self):
         domain = "%s-heartbeats" % self.cluster_name

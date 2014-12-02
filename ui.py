@@ -63,18 +63,16 @@ def get_sdbc_connection():
                                         aws_secret_access_key=config['AWS_SECRET_ACCESS_KEY'])
 
 
-def filter_inactive_instances(instances):
+def filter_stopped_instances(instances):
     return [i for i in instances if not (i.state in ['terminated', 'stopped'])]
 
 
-def find_terminated_in_cluster(ec2, cluster_name):
-    instances = ec2.get_only_instances(filters={"instance-state-name":"terminated"})
-    group_name = "@sc-" + cluster_name
-    return [i for i in instances if group_name in [g.name for g in i.groups]]
+def find_terminated_in_cluster(ec2):
+    return ec2.get_only_instances(filters={"instance-state-name":"terminated"})
 
 def find_instances_in_cluster(ec2, cluster_name):
     instances = ec2.get_only_instances()
-    instances = filter_inactive_instances(instances)
+    instances = filter_stopped_instances(instances)
     group_name = "@sc-" + cluster_name
     return [i for i in instances if group_name in [g.name for g in i.groups]]
 
@@ -99,7 +97,7 @@ def get_spot_prices(ec2):
 
 def get_instance_counts(ec2):
     instances = ec2.get_only_instances()
-    instances = filter_inactive_instances(instances)
+    instances = filter_stopped_instances(instances)
 
     counts = collections.defaultdict(lambda: 0)
     for i in instances:
@@ -613,7 +611,7 @@ def show_instances():
     ec2 = get_ec2_connection()
     spots = ec2.get_all_spot_instance_requests(filters={"state":"open"})
     instances = ec2.get_only_instances()
-    instances = filter_inactive_instances(instances)
+    instances = filter_stopped_instances(instances)
     return flask.render_template("show-instances.html", instances=instances, spots=spots)
 
 @app.route("/kill-instances")
