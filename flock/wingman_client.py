@@ -26,7 +26,7 @@ class ConsolidatedMonitor(flock.JobListener):
             fd.write("set -e\n"
                      "%(notify_command)s started %(run_id)s %(task_dir)s\n"
                      "set +e\n"
-                     "if bash %(task_script)s ; then\n"
+                     "if %(watch_command)s bash %(task_script)s ; then\n"
                      "  set -e\n"
                      "  %(notify_command)s completed %(run_id)s %(task_dir)s\n"
                      "else\n"
@@ -35,6 +35,7 @@ class ConsolidatedMonitor(flock.JobListener):
                      "fi\n" % dict(run_id=run_id,
                                    task_dir=d,
                                    task_script=task_script,
+                                   watch_command=wingman.format_watch_command(self.flock_home, os.path.join(d, "proc_stats.txt")),
                                    notify_command=wingman.format_notify_command(self.flock_home, self.endpoint_url)))
 
         return (script_to_execute, stdout, stderr)

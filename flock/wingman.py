@@ -49,6 +49,10 @@ KILL_SUBMITTED = -5
 status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED", COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING", KILLED: "KILLED", KILL_PENDING : "KILL_PENDING",
                        KILL_SUBMITTED: "KILL_SUBMITTED"}
 
+MONITOR_POLL_INTERVAL = 1
+def format_watch_command(flock_home, log_file):
+    return "python %s/watch_proc.py %s %d" % (flock_home, log_file, MONITOR_POLL_INTERVAL)
+
 def format_notify_command(flock_home, endpoint_url):
     return "python %s/wingman_notify.py %s" % (flock_home, endpoint_url)
 
