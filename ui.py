@@ -316,6 +316,7 @@ import xmlrpclib
 import paramiko
 import threading
 per_thread_cache = threading.local()
+import traceback
 
 def get_wingman_service_factory():
     ec2 = get_ec2_connection()
@@ -344,12 +345,14 @@ def get_wingman_service_factory():
                 service = try_get()
             except paramiko.SSHException:
                 print("Swallowing exception from try_get")
+                traceback.print_exc()
                 continue
 
             try:
                 service.get_version()
             except paramiko.SSHException:
                 print("Swallowing exception from get_version")
+                traceback.print_exc()
                 continue
 
             # if we didn't get the exception, return the service
