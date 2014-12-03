@@ -317,39 +317,54 @@ import paramiko
 import threading
 per_thread_cache = threading.local()
 
-def get_wingman_service():
+def get_wingman_service_factory():
+    ec2 = get_ec2_connection()
+    master, key_location = get_master_info(ec2)
+    master_dns_name = master.dns_name
+
     def try_get():
         if hasattr(per_thread_cache, "client"):
             client = per_thread_cache.client
+            client.get_transport().send_ignore(10)
             if not client.get_transport().is_active():
-                ec2 = get_ec2_connection()
-                master, key_location = get_master_info(ec2)
-                client.connect(master.dns_name, username="ubuntu", key_filename=key_location)
+                client.connect(master_dns_name, username="ubuntu", key_filename=key_location)
         else:
-            ec2 = get_ec2_connection()
-            master, key_location = get_master_info(ec2)
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            client.connect(master.dns_name, username="ubuntu", key_filename=key_location)
+            client.connect(master_dns_name, username="ubuntu", key_filename=key_location)
             per_thread_cache.client = client
 
         ssh_transport = client.get_transport()
         service = xmlrpclib.ServerProxy("http://localhost:3010", transport=sshxmlrpc.Transport(ssh_transport), allow_none=True)
         return service
 
-    for i in range(3):
-        service = try_get()
-        try:
-            service.get_version()
-        except paramiko.SSHException:
-            print("Swallowing exception")
-            continue
-        # if we didn't get the exception, return the service
-        return service
+    def get():
+        for i in range(3):
+            try:
+                service = try_get()
+            except paramiko.SSHException:
+                print("Swallowing exception from try_get")
+                continue
 
-    raise Exception("Got too many ssh exceptions")
+            try:
+                service.get_version()
+            except paramiko.SSHException:
+                print("Swallowing exception from get_version")
+                continue
 
-    # per_thread_cache.service = service
+            # if we didn't get the exception, return the service
+            return service
+        raise Exception("Got too many ssh exceptions")
+
+    return get
+
+def get_wingman_service():
+    if hasattr(per_thread_cache, "wingman_service_factory"):
+        wingman_service_factory = per_thread_cache.wingman_service_factory
+    else:
+        wingman_service_factory = get_wingman_service_factory()
+        per_thread_cache.wingman_service_factory = wingman_service_factory
+    return wingman_service_factory()
 
 def get_jobs_from_remote():
     return get_wingman_service().get_runs()

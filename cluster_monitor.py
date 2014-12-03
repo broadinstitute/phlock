@@ -130,6 +130,8 @@ class ClusterManager(object):
         self.loadbalance_pid_file = loadbalance_pid_file
         self.loadbalance_start_time = None
         self.sdbc = sdbc
+        import ui
+        self.wingman_service_factory = ui.get_wingman_service_factory()
 
     def start_manager(self):
         # make sure we don't try to have two running manager threads
@@ -270,8 +272,7 @@ class ClusterManager(object):
                 newly_terminated_aliases.add(alias)
                 newly_terminated_ids.add(instance.id)
 
-        import ui
-        wingman_service = ui.get_wingman_service()
+        wingman_service = self.wingman_service_factory()
         print "Terminated nodes: %s, new: %s" % (terminated_instances, newly_terminated_aliases)
         for alias in newly_terminated_aliases:
             wingman_service.node_disappeared(alias)
