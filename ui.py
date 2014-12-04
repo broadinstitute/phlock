@@ -7,7 +7,6 @@ import tempfile
 import re
 import term
 import socket
-import time
 
 from flask.ext.openid import OpenID
 
@@ -313,56 +312,23 @@ CONFIGS = { "bulk": [ {"name":["bulk"], "targetDataset": ["ach2.12"], "targetDat
   "predictiveFeatures": [ ["GE"], ["CN"], ["MUT"], ["GE", "CN", "MUT"] ] } ] }
 
 import sshxmlrpc
-import xmlrpclib
-import paramiko
 import threading
 per_thread_cache = threading.local()
-import traceback
 
 def get_wingman_service_factory():
     ec2 = get_ec2_connection()
     master, key_location = get_master_info(ec2)
     master_dns_name = master.dns_name
 
-    def try_get():
-        if hasattr(per_thread_cache, "client"):
-            client = per_thread_cache.client
-            client.get_transport().send_ignore(10)
-            if not client.get_transport().is_active():
-                client.connect(master_dns_name, username="ubuntu", key_filename=key_location)
-        else:
-            client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            client.connect(master_dns_name, username="ubuntu", key_filename=key_location)
-            per_thread_cache.client = client
+    def factory():
+        # perhaps we should ask the wingman service for the names of all methods?  That would avoid hardcoding them here
+        client_methods = set(["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run",
+                              "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
+                              "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs",
+                              "set_required_mem_override", "get_run_tasks"])
+        return sshxmlrpc.SshXmlServiceProxy(master_dns_name, "ubuntu", key_location, 3010, client_methods)
 
-        ssh_transport = client.get_transport()
-        service = xmlrpclib.ServerProxy("http://localhost:3010", transport=sshxmlrpc.Transport(ssh_transport), allow_none=True)
-        return service
-
-    def get():
-        for i in range(15):
-            try:
-                service = try_get()
-            except paramiko.SSHException:
-                print("Swallowing exception from try_get")
-                traceback.print_exc()
-                time.sleep(1)
-                continue
-
-            try:
-                service.get_version()
-            except paramiko.SSHException:
-                print("Swallowing exception from get_version")
-                traceback.print_exc()
-                time.sleep(1)
-                continue
-
-            # if we didn't get the exception, return the service
-            return service
-        raise Exception("Got too many ssh exceptions")
-
-    return get
+    return factory
 
 def get_wingman_service():
     if hasattr(per_thread_cache, "wingman_service_factory"):
