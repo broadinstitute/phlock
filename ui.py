@@ -7,6 +7,7 @@ import tempfile
 import re
 import term
 import socket
+import time
 
 from flask.ext.openid import OpenID
 
@@ -340,12 +341,13 @@ def get_wingman_service_factory():
         return service
 
     def get():
-        for i in range(3):
+        for i in range(15):
             try:
                 service = try_get()
             except paramiko.SSHException:
                 print("Swallowing exception from try_get")
                 traceback.print_exc()
+                time.sleep(1)
                 continue
 
             try:
@@ -353,6 +355,7 @@ def get_wingman_service_factory():
             except paramiko.SSHException:
                 print("Swallowing exception from get_version")
                 traceback.print_exc()
+                time.sleep(1)
                 continue
 
             # if we didn't get the exception, return the service
