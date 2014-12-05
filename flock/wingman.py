@@ -399,7 +399,7 @@ def identify_tasks_which_disappeared(store, queue):
     external_id_to_task_dir = dict(store.find_tasks_external_id_by_status(KILL_SUBMITTED))
     update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, KILLED)
 
-def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
+def submit_created_tasks(listener, store, queue_factory, max_submitted):
 
     submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
@@ -444,7 +444,7 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted=100):
         queue.submit(run_id, os.path.join(run_dir, task_dir), "scatter" in task_dir)
 
 
-def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted=100):
+def main_loop(endpoint_url, flock_home, store, max_submitted, localQueue = False):
 
     if localQueue:
         queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override: LocalBgQueue(listener, workdir)
@@ -459,7 +459,7 @@ def main_loop(endpoint_url, flock_home, store, localQueue = False, max_submitted
     while True:
         try:
             needed_to_kill_tasks = handle_kill_pending_tasks(store, t_queue)
-            submit_created_tasks(listener, store, queue_factory, max_submitted=max_submitted)
+            submit_created_tasks(listener, store, queue_factory, max_submitted)
 
             if last_check_for_missing == None or (time.time() - last_check_for_missing) > 60:
                 identify_tasks_which_disappeared(store, t_queue)
@@ -482,13 +482,23 @@ def make_function_wrapper(fn):
             raise
     return wrapped
 
+import argparse
+
 def main():
     FORMAT = "[%(asctime)-15s] %(message)s"
     logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt="%Y%m%d-%H%M%S")
 
-    queue = sys.argv[1]
-    db = sys.argv[2]
-    port = int(sys.argv[3])
+    parser = argparse.ArgumentParser(description='Wingman service for tracking state of jobs.')
+    parser.add_argument('queue', help='The queue to use.  Either "local" or "sge"')
+    parser.add_argument('db_path', help="The path to the sqlite3 database to use for bookkeeping.  It will be created if it doesn't already exist")
+    parser.add_argument("port", help="The port this service should listen on", type=int)
+    parser.add_argument("--maxsubmitted", help="The maximum number non-running jobs allowed to sit in the backend queue at one time", type=int, default=100)
+
+    args = parser.parse_args()
+
+    queue = args.queue
+    db = args.db_path
+    port = args.port
     
     flock_home = flock.get_flock_home()
     endpoint_url = "http://%s:%d" % (socket.gethostname(), port)
@@ -497,7 +507,7 @@ def main():
 
     assert queue in ['local', 'sge']
 
-    main_loop_thread = threading.Thread(target=lambda: main_loop(endpoint_url, flock_home, store, localQueue=(queue == 'local')))
+    main_loop_thread = threading.Thread(target=lambda: main_loop(endpoint_url, flock_home, store, args.maxsubmitted, localQueue=(queue == 'local')))
     main_loop_thread.daemon = True
     server = SimpleXMLRPCServer(("0.0.0.0", port), allow_none=True)
     main_loop_thread.start()

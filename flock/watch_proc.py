@@ -57,6 +57,7 @@ def run_and_watch(log_file, args, delay_between_checks=10):
   else:
     fd = open(log_file, "w")
     fd.write("state timestamp utime stime vsizeMB rssMB\n")
+    fd.flush()
     
   proc = subprocess.Popen(args, close_fds=True)
   adjust_omm_score(proc.pid)
