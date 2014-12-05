@@ -291,9 +291,9 @@ class ClusterManager(object):
         dom.put_attributes('heartbeat', {'timestamp': time.time(), 'hostname': socket.getfqdn()})
 
     def _execute_update(self):
-        if self.loadbalance_start_time != None and (time.time() - self.loadbalance_start_time > 60):
+        if self.loadbalance_start_time != None and ((time.time() - self.loadbalance_start_time) > 5*60):
             if self.loadbalance_proc.poll() == None:
-                # only if the loadbalancer has been up for > 1 minute do we really think its running
+                # only if the loadbalancer has been up for > 5 minutes do we really think its running
                 self._send_heartbeat()
 
         print "verifing ownership"
