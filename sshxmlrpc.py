@@ -2,6 +2,8 @@ __author__ = 'pmontgom'
 import xmlrpclib
 import httplib
 import socket
+import paramiko
+import traceback
 
 class SSHHTTPConnection(httplib.HTTPConnection):
     def __init__(self, host, ssh_transport, **kwargs):
@@ -11,9 +13,9 @@ class SSHHTTPConnection(httplib.HTTPConnection):
     def connect(self):
         """Connect to the host and port specified in __init__."""
         source_address = (socket.gethostname(), 0)
-        self.sock = self.ssh_transport.ssh_transport.open_channel('direct-tcpip',
-                                                   (self.host,self.port),
-                                                   source_address)
+        dest_address = (self.host, self.port)
+
+        self.sock = self.ssh_transport._open_ssh_channel(dest_address, source_address)
 
         # hack to work around issue in using paraminko channels as a "socket".  See http://bugs.python.org/issue7806
         # for details.  The gist is socket.close() doesn't actually close a socket in python.  It only removes a reference
@@ -21,10 +23,9 @@ class SSHHTTPConnection(httplib.HTTPConnection):
         original_close = self.sock.close
 
         def monkey_patched_close():
-            print "ignoring close"
+            pass
 
         def real_close():
-            print "real close"
             original_close()
 
         self.ssh_transport.clean_up_callbacks.append(real_close)
@@ -35,10 +36,16 @@ class SSHHTTPConnection(httplib.HTTPConnection):
 
 
 class SshTransport(xmlrpclib.Transport):
-    def __init__(self, ssh_transport, **kwargs):
+    def __init__(self, ssh_client, **kwargs):
         xmlrpclib.Transport.__init__(self, **kwargs)
-        self.ssh_transport = ssh_transport
+        self.ssh_client = ssh_client
         self.clean_up_callbacks = []
+
+    def _open_ssh_channel(self, dest_address, source_address):
+        return self.ssh_client.get_transport().open_channel('direct-tcpip',
+                                                   dest_address,
+                                                   source_address)
+
 
     # mostly copied from xmlrpclib.Transport.make_connection
     def make_connection(self, host):
@@ -56,28 +63,33 @@ class SshTransport(xmlrpclib.Transport):
     def dispose(self):
         for c in self.clean_up_callbacks:
             c()
-        self.ssh_transport = None
+        self.ssh_client = None
 
-import threading
-per_thread_cache = threading.local()
-import traceback
-import paramiko
 
 class MethodProxy(object):
-    def __init__(self, hostname, username, key_filename, method_name):
+    def __init__(self, owner, hostname, username, key_filename, method_name):
+        self.owner = owner
         self.hostname = hostname
         self.username = username
         self.key_filename = key_filename
         self.method_name = method_name
 
-    def __call__(self, *args, **kwargs):
-        client, transport = threadsafe_get_client(self.hostname, self.username, self.key_filename)
-
+    def _exec_call(self, args, kwargs):
+        xmlrpcclient, transport = self.owner._get_connection()
         try:
-            # if we want retry logic, it should go here
-            result = client.__getattr__(self.method_name)(*args, **kwargs)
+            result = xmlrpcclient.__getattr__(self.method_name)(*args, **kwargs)
         finally:
             transport.dispose()
+        return result
+
+    def __call__(self, *args, **kwargs):
+        try:
+            result = self._exec_call(args, kwargs)
+        except paramiko.SSHException:
+            self.owner._reconnect()
+            print "Got exception, reconnecting and retrying call"
+            traceback.print_exc()
+            result = self._exec_call(args, kwargs)
 
         return result
 
@@ -88,29 +100,27 @@ class SshXmlServiceProxy(object):
         self.key_filename = key_filename
         self.hostname = hostname
         self.client_methods = client_methods
+        self.client = paramiko.SSHClient()
+        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    def _reconnect(self):
+        #print "calling reconnect <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
+        self.client.connect(self.hostname, username=self.username, key_filename=self.key_filename)
+
+    def _get_connection(self):
+        if self.client.get_transport() == None or not self.client.get_transport().is_active():
+            self._reconnect()
+
+        transport = SshTransport(self.client)
+        service = xmlrpclib.ServerProxy("http://localhost:3010", transport=transport, allow_none=True)
+
+        return service, transport
 
     def __getattribute__(self, name):
         client_methods = object.__getattribute__(self, "client_methods")
         if name in client_methods:
-            return MethodProxy(self.hostname, self.username, self.key_filename, name)
+            return MethodProxy(self, self.hostname, self.username, self.key_filename, name)
         else:
             return object.__getattribute__(self, name)
 
-
-def threadsafe_get_client(hostname, username, key_filename):
-    needs_connect = True
-    if hasattr(per_thread_cache, "client"):
-        client = per_thread_cache.client
-        needs_connect = not client.get_transport().is_active()
-    else:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        per_thread_cache.client = client
-
-    if needs_connect:
-        client.connect(hostname, username=username, key_filename=key_filename)
-
-    transport = SshTransport(client.get_transport())
-    service = xmlrpclib.ServerProxy("http://localhost:3010", transport=transport, allow_none=True)
-    return service, transport
 
