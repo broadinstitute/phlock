@@ -119,6 +119,7 @@ class ClusterManager(object):
         self.loadbalance_pid_file = loadbalance_pid_file
         self.loadbalance_start_time = None
         self.sdbc = sdbc
+        self.restart_times = []
         import ui
         self.wingman_service_factory = ui.get_wingman_service_factory()
 
@@ -152,8 +153,20 @@ class ClusterManager(object):
                 self._execute_shutdown()
                 running = False
             elif message == "loadbalance-exited":
-                # restart loadbalancer if it exits
+                self.terminal.write("loadbalancer terminated unexpectedly\n")
+                # when the loadbalancer exits, we should auto-restart,
+                # but keep track of the times of the last 5 restarts so that detect whether the process is flapping
+                now = time.time()
+                self.restart_times.append(now)
+                self.terminal.write("termination times: %s\n"%repr(self.restart_times))
+                if len(self.restart_times) > 5:
+                    self.restart_times = self.restart_times[-5:]
+                    if self.restart_times[0] > now - (60*30):
+                        raise Exception("Loadbalancer has restarted 5 times in less than 30 minutes.  There may be a problem with the loadbalancer.")
+
+                # if we didn't throw an exception, restart the loadbalancer
                 self._execute_startup()
+
             elif update_timer.expired:
                 self._execute_update()
                 update_timer.reset()
@@ -170,7 +183,7 @@ class ClusterManager(object):
             self.terminal.write(exception_message)
             self._kill_loadbalance_proc()
 
-        self.terminal.write("Cluster monitor terminated")
+        self.terminal.write("Cluster monitor terminated\n")
         self.manager_state = CM_STOPPED
 
     def get_manager_state(self):
