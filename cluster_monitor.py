@@ -18,23 +18,12 @@ class Parameters:
         self.dryrun=False
         self.log_file = None
         self.job_wait_time = 300
+        self.stabilization_time = 180
 
     def get_total_spot_bid(self):
         cpus = cpus_per_instance[self.instance_type]
         return self.spot_bid * cpus
 
-    def generate_args(self):
-        return ["--spot_bid", str(self.get_total_spot_bid()),
-                "--max_to_add", str(self.max_to_add),
-                "--time_per_job", str(self.time_per_job),
-                "--time_to_add_servers_fixed", str(self.time_to_add_servers_fixed),
-                "--time_to_add_servers_per_server", str(self.time_to_add_servers_per_server),
-                "--instance_type", str(self.instance_type),
-                "--domain", self.domain,
-                "--jobs_per_server", str(self.jobs_per_server),
-                "--logfile", self.log_file,
-                "--max_instances", str(self.max_instances)
-                ]
 
 # different states the cluster can be in
 C_STOPPED = "stopped"
@@ -232,7 +221,8 @@ class ClusterManager(object):
                 "--spot-bid", str(self.monitor_parameters.get_total_spot_bid()),
                 "--min_nodes", str(self.monitor_parameters.min_instances),
                 "--instance-type", self.monitor_parameters.instance_type,
-                "--job_wait_time", str(self.monitor_parameters.job_wait_time)]
+                "--job_wait_time", str(self.monitor_parameters.job_wait_time),
+                "--stabilization_time", str(self.monitor_parameters.stabilization_time)]
         self.loadbalance_proc = self._run_starcluster_cmd(["loadbalance", self.cluster_name] + args, "loadbalance-exited")
 
     def _verify_ownership_of_cluster(self, steal_ownership=False):

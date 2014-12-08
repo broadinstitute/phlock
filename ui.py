@@ -604,6 +604,7 @@ def set_monitor_parameters():
     monitor_parameters.max_instances=int(values['max_instances'])
     monitor_parameters.min_instances=int(values['min_instances'])
     monitor_parameters.job_wait_time = int(values['job_wait_time'])
+    monitor_parameters.stabilization_time = int(values['stabilization_time'])
 
     return flask.redirect("/")
 
