@@ -98,6 +98,7 @@ class TaskStore:
             self._active_transaction = TransactionContext(self._connection, self._lock)
         return self._active_transaction
 
+    # TODO: Switch this to look up runs by name, not run_dir
     def get_run_tasks(self, run_dir):
         with self.transaction() as db:
             result = []
@@ -108,6 +109,14 @@ class TaskStore:
                 task = {'task_dir':task_dir, 'status':status_code_to_name[status], 'try_count': try_count, 'node_name':node_name, 'external_id':external_id, 'group_number':group_number}
                 result.append(task)
             return result
+
+    def get_run(self, name):
+        with self.transaction() as db:
+            db.execute("SELECT run_dir, name, parameters FROM RUNS WHERE name = ?", [name])
+            rows = db.fetchall()
+            assert len(rows) == 1
+            run_dir, name, parameters = rows[0]
+            return dict(run_dir=run_dir, name=name, parameters=parameters)
 
     def get_runs(self):
         with self.transaction() as db:
@@ -347,7 +356,7 @@ class TaskStore:
 
     def set_required_mem_override(self, run_id, mem_override):
         with self.transaction() as db:
-            db.execute("UPDATE RUNS set required_mem_override = ? WHERE run_id = ?", [mem_override, run_id])
+            db.execute("UPDATE RUNS set required_mem_override = ? WHERE run_dir = ?", [mem_override, run_id])
         return True
 
 def handle_kill_pending_tasks(store, queue, batch_size=10):
@@ -515,7 +524,7 @@ def main():
     print "Listening on port %d..." % port
     for method in ["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                    "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override",
-                   "get_run_tasks"]:
+                   "get_run_tasks", "get_run"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
 
     server.serve_forever()
