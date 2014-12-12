@@ -100,7 +100,7 @@ class Mailbox(object):
         self.cv.release()
 
 class ClusterManager(object):
-    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file, sdbc):
+    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file, sdbc, wingman_service_factory):
         super(ClusterManager, self).__init__()
         self.manager_state = CM_STOPPED
         self.requested_stop = False
@@ -120,8 +120,7 @@ class ClusterManager(object):
         self.loadbalance_start_time = None
         self.sdbc = sdbc
         self.restart_times = []
-        import ui
-        self.wingman_service_factory = ui.get_wingman_service_factory()
+        self.wingman_service_factory = wingman_service_factory
 
     def start_manager(self):
         # make sure we don't try to have two running manager threads

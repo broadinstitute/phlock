@@ -316,11 +316,14 @@ import threading
 per_thread_cache = threading.local()
 
 def get_wingman_service_factory():
-    ec2 = get_ec2_connection()
-    master, key_location = get_master_info(ec2)
-    master_dns_name = master.dns_name
+    app = flask.current_app
 
     def factory():
+        with app.app_context():
+            ec2 = get_ec2_connection()
+            master, key_location = get_master_info(ec2)
+            master_dns_name = master.dns_name
+
         # perhaps we should ask the wingman service for the names of all methods?  That would avoid hardcoding them here
         client_methods = set(["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run",
                               "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
@@ -695,7 +698,9 @@ def init_manager():
                                                      [config['STARCLUSTER_CMD'], "-c", config['STARCLUSTER_CONFIG']],
                                                      instance_id,
                                                      get_ec2_connection(),
-                                                     config['LOADBALANCE_PID_FILE'], get_sdbc_connection())
+                                                     config['LOADBALANCE_PID_FILE'],
+                                                     get_sdbc_connection(),
+                                                     get_wingman_service_factory())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Start webserver for cluster ui')
