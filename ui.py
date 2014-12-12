@@ -314,9 +314,15 @@ CONFIGS = { "bulk": [ {"name":["bulk"], "targetDataset": ["ach2.12"], "targetDat
 import sshxmlrpc
 import threading
 per_thread_cache = threading.local()
+from werkzeug.local import LocalProxy
 
 def get_wingman_service_factory():
     app = flask.current_app
+    if isinstance(app, LocalProxy):
+        print "getting app from proxy"
+        app = app._get_current_object()
+    else:
+        print "app is not a proxy"
 
     def factory():
         with app.app_context():
