@@ -7,6 +7,8 @@ import tempfile
 import re
 import term
 import socket
+import sys
+import traceback
 
 from flask.ext.openid import OpenID
 
@@ -71,8 +73,22 @@ def filter_stopped_instances(instances):
 def find_terminated_in_cluster(ec2):
     return ec2.get_only_instances(filters={"instance-state-name":"terminated"})
 
+def execute_with_retry(fn, exception_types, retry_count=3):
+    for i in range(retry_count):
+        try:
+            return fn()
+        except:
+            error_type, error_instance, t = sys.exc_info()
+            if not (error_type in exception_types):
+                raise
+            else:
+                traceback.print_exc()
+                print("Call failed, retrying...")
+    raise Exception("Too many failures.  Aborting")
+
+
 def find_instances_in_cluster(ec2, cluster_name):
-    instances = ec2.get_only_instances()
+    instances = execute_with_retry(ec2.get_only_instances, [boto.exception.EC2ResponseError])
     instances = filter_stopped_instances(instances)
     group_name = "@sc-" + cluster_name
     return [i for i in instances if group_name in [g.name for g in i.groups]]
