@@ -71,7 +71,7 @@ def filter_stopped_instances(instances):
 
 
 def find_terminated_in_cluster(ec2):
-    return ec2.get_only_instances(filters={"instance-state-name":"terminated"})
+    return execute_with_retry(lambda: ec2.get_only_instances(filters={"instance-state-name":"terminated"}), [boto.exception.EC2ResponseError])
 
 def execute_with_retry(fn, exception_types, retry_count=3):
     for i in range(retry_count):
@@ -113,7 +113,7 @@ def get_spot_prices(ec2):
     return hourly_rate
 
 def get_instance_counts(ec2):
-    instances = ec2.get_only_instances()
+    instances = execute_with_retry(ec2.get_only_instances, [boto.exception.EC2ResponseError])
     instances = filter_stopped_instances(instances)
 
     counts = collections.defaultdict(lambda: 0)
