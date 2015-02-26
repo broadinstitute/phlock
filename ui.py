@@ -43,7 +43,7 @@ config = LocalProxy(_get_current_config)
 def load_starcluster_config(app_config):
     config = ConfigParser.ConfigParser()
     config.read(app_config['STARCLUSTER_CONFIG'])
-    include_paths = config.get("global", "include")
+    include_paths = config.get("global", "include", None)
     if include_paths != None:
         include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
         for path in include_paths:
@@ -143,18 +143,8 @@ def redirect_with_error(url, msg):
 
 
 def secured(fn):
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        if 'email' in flask.session:
-            if not (flask.session['email'] in config['AUTHORIZED_USERS']):
-                return redirect_with_error("/login", "You are not authorized to use this application")
-
-            return fn(*args, **kwargs)
-        else:
-            return flask.redirect("/login")
-
-    return wrapper
-
+    # made this into a noop when I made a global login requirement
+    return fn
 
 def create_or_login(resp):
     """This is called when login with OpenID succeeded and it's not
@@ -179,6 +169,24 @@ def login():
     openid = "https://crowd.broadinstitute.org:8443/openidserver/op"
     return oid.try_login(openid, ask_for=['email', 'fullname'])
 
+
+@app.before_request
+def ensure_logged_in_before_request():
+    if not (request.endpoint in ['login', 'not_authorized']):
+        if 'email' in flask.session:
+            if not (flask.session['email'] in config['AUTHORIZED_USERS']):
+                return redirect_with_error("/not_authorized", "You are not authorized to use this application")
+            else:
+                return None
+        else:
+            return flask.redirect("/login")
+
+    return None
+
+
+@app.route("/not_authorized")
+def not_authorized():
+    return flask.render_template("not_authorized.html")
 
 @app.route("/logout")
 def logout():
