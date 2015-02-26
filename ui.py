@@ -48,11 +48,21 @@ def load_starcluster_config(app_config):
         include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
         for path in include_paths:
           config.read(path)
-    
+
     app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
     app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
     if not ("CLUSTER_TEMPLATE" in app_config):
         app_config["CLUSTER_TEMPLATE"] = config.get("global", "DEFAULT_TEMPLATE")
+
+    try:
+        dns_prefix = config.get("cluster %s" % app_config["CLUSTER_TEMPLATE"], "DNS_PREFIX") == "True"
+    except ConfigParser.NoOptionError:
+        dns_prefix = False
+
+    if dns_prefix:
+        app_config["MASTER_NODE_NAME"] = app_config["CLUSTER_NAME"] + "-master"
+    else:
+        app_config["MASTER_NODE_NAME"] = "master"
 
     key_name = config.get("cluster %s" % app_config["CLUSTER_TEMPLATE"], "KEYNAME")
     app_config['KEY_LOCATION'] = os.path.expanduser(config.get("key %s" % key_name, "KEY_LOCATION"))
@@ -96,7 +106,7 @@ def find_instances_in_cluster(ec2, cluster_name):
 
 def find_master(ec2, cluster_name):
     instances = find_instances_in_cluster(ec2, cluster_name)
-    matches = [i for i in instances if "Name" in i.tags and i.tags["Name"] == "master"]
+    matches = [i for i in instances if "Name" in i.tags and i.tags["Name"] == config["MASTER_NODE_NAME"]]
     if len(matches) == 0:
         return None
     if len(matches) == 1:
@@ -744,6 +754,8 @@ if __name__ == "__main__":
                       LOADBALANCE_PID_FILE="loadbalance.pid")
     app.config.from_pyfile(args.config_path)
     load_starcluster_config(app.config)
+
+    print "config=%s" % repr(app.config)
 
     oid.init_app(app)
     oid.after_login_func = create_or_login
