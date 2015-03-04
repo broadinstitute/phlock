@@ -40,14 +40,24 @@ TARGET_ROOT = "/data2/runs"
 
 config = LocalProxy(_get_current_config)
 
+def convert_to_boolean(name, value):
+    value = value.lower()
+    if value == 'true':
+        return True
+    if value == 'false':
+        return False
+    raise Exception("Expected either 'True' or 'False' for %s but got %s" %(name, repr(value)))
+
 def load_starcluster_config(app_config):
     config = ConfigParser.ConfigParser()
     config.read(app_config['STARCLUSTER_CONFIG'])
-    include_paths = config.get("global", "include", None)
-    if include_paths != None:
+    try:
+        include_paths = config.get("global", "include")
         include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
         for path in include_paths:
-          config.read(path)
+            config.read(path)
+    except ConfigParser.NoOptionError:
+        pass
 
     app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
     app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
@@ -55,7 +65,7 @@ def load_starcluster_config(app_config):
         app_config["CLUSTER_TEMPLATE"] = config.get("global", "DEFAULT_TEMPLATE")
 
     try:
-        dns_prefix = config.get("cluster %s" % app_config["CLUSTER_TEMPLATE"], "DNS_PREFIX") == "True"
+        dns_prefix = convert_to_boolean("DNS_PREFIX", config.get("cluster %s" % app_config["CLUSTER_TEMPLATE"], "DNS_PREFIX"))
     except ConfigParser.NoOptionError:
         dns_prefix = False
 
@@ -549,11 +559,11 @@ def get_current_timestamp():
     return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
-def submit_job(flock_config, params, nowait):
-    assert params["repo"] != None
-    assert params["branch"] != None
+def submit_job(flock_config, params, transfer_from_git=True):
+    #assert params["repo"] != None
+    #assert params["branch"] != None
     assert params["run_id"] != None
-    assert params["sha"] != None
+    #assert params["sha"] != None
 
     ec2 = get_ec2_connection()
     master, key_location = get_master_info(ec2)
@@ -572,10 +582,12 @@ def submit_job(flock_config, params, nowait):
     run_id = params['run_id']
     title = "Run %s: %s" % (run_id, ", ".join([str(params[k]) for k in sorted_keys if not (k in ["run_id", "sha", "repo", "branch", "config"]) ]))
 
-    return run_command(
-        [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
-         TARGET_ROOT, t2.name, run_id, config["FLOCK_PATH"], params['sha'], "nowait" if nowait else "wait"], title=title)
-
+    if transfer_from_git:
+        return run_command(
+            [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
+             TARGET_ROOT, t2.name, run_id, config["FLOCK_PATH"], params['sha']], title=title)
+    else:
+        return run_command([config['PYTHON_EXE'], "-u", "remoteExec.py", "exec-only", master.dns_name, key_location, t.name, TARGET_ROOT, t2.name, run_id], title=title)
 
 def get_sha(repo, branch):
     proc = subprocess.Popen(["git", "ls-remote", repo], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -593,6 +605,21 @@ def get_sha(repo, branch):
 @secured
 def submit_batch_job_form():
     return flask.render_template("submit-batch-job-form.html", default_repo="ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", default_branch="refs/heads/master")
+
+@app.route("/submit-flock-job-form")
+@secured
+def submit_flock_job_form():
+    return flask.render_template("submit-flock-job-form.html")
+
+@app.route("/submit-flock-job", methods=["POST"])
+@secured
+def submit_flock_job():
+    flock_config = request.files["flock_config"]
+    flock_config_str = flock_config.read()
+
+    timestamp = get_current_timestamp()
+    submit_job(flock_config_str, {'run_id': timestamp}, transfer_from_git=False)
+    return redirect_with_success("submitted %s" % (timestamp, ), "/")
 
 @app.route("/submit-batch-job", methods=["POST"])
 @secured
@@ -614,7 +641,7 @@ def submit_batch_job():
     submit = request.values['submit']
     if submit == 'submit':
         for params, flock in json_and_flock:
-            submit_job(flock, params, True)
+            submit_job(flock, params, transfer_from_git=True)
         return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")
 
     elif submit == 'export':
@@ -754,8 +781,6 @@ if __name__ == "__main__":
                       LOADBALANCE_PID_FILE="loadbalance.pid")
     app.config.from_pyfile(args.config_path)
     load_starcluster_config(app.config)
-
-    print "config=%s" % repr(app.config)
 
     oid.init_app(app)
     oid.after_login_func = create_or_login
