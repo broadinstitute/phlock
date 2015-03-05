@@ -36,7 +36,6 @@ from werkzeug.local import LocalProxy
 def _get_current_config():
     return flask.current_app.config
 
-TARGET_ROOT = "/data2/runs"
 
 config = LocalProxy(_get_current_config)
 
@@ -396,12 +395,12 @@ def get_jobs_from_remote():
 
 @app.route("/run/<run_name>")
 def show_run(run_name):
-    run_dir = TARGET_ROOT + "/" + run_name + "/files"
+    run_dir = config['TARGET_ROOT'] + "/" + run_name + "/files"
     tasks = get_wingman_service().get_run_tasks(run_dir)
     def rewrite_task(t):
         t = dict(t)
         # drop run prefix
-        t['task_dir'] = t['task_dir'][len(TARGET_ROOT)+3+len("files")+len(run_name):]
+        t['task_dir'] = t['task_dir'][len(config['TARGET_ROOT'])+3+len("files")+len(run_name):]
         return t
     tasks = [rewrite_task(t) for t in tasks]
     return flask.render_template("show-run.html", run_name=run_name, tasks=tasks)
@@ -411,7 +410,7 @@ def show_run(run_name):
 @app.route("/list-run-files/<run_name>/<path:file_path>")
 def list_run_files(run_name, file_path):
 
-    run_dir = TARGET_ROOT + "/" + run_name + "/files"
+    run_dir = config['TARGET_ROOT'] + "/" + run_name + "/files"
 
     if file_path == "":
         wildcard = "*"
@@ -430,7 +429,7 @@ def list_run_files(run_name, file_path):
 
 @app.route("/view-run-file/<run_name>/<path:file_path>")
 def view_run_file(run_name, file_path):
-    run_dir = TARGET_ROOT + "/" + run_name + "/files"
+    run_dir = config['TARGET_ROOT'] + "/" + run_name + "/files"
 
     service = get_wingman_service()
     files = service.get_run_files(run_dir, file_path)
@@ -508,7 +507,7 @@ def parse_and_validate_jobs(job_ids_json):
 
 
 def get_run_dir_for_job_name(job_name):
-    return "%s/%s/files" % (TARGET_ROOT, job_name)
+    return "%s/%s/files" % (config['TARGET_ROOT'], job_name)
 
 @app.route("/archive-jobs", methods=["POST"])
 @secured
@@ -523,7 +522,7 @@ def archive_jobs():
         service.delete_run(get_run_dir_for_job_name(job_name))
 
     return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                            "mv " + " ".join([TARGET_ROOT + "/" + job_id for job_id in job_ids])+ " " + os.path.join(TARGET_ROOT, destination)])
+                            "mv " + " ".join([config['TARGET_ROOT'] + "/" + job_id for job_id in job_ids])+ " " + os.path.join(config['TARGET_ROOT'], destination)])
 
 @app.route("/retry-jobs", methods=["POST"])
 @secured
@@ -585,9 +584,9 @@ def submit_job(flock_config, params, transfer_from_git=True):
     if transfer_from_git:
         return run_command(
             [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
-             TARGET_ROOT, t2.name, run_id, config["FLOCK_PATH"], params['sha']], title=title)
+             config['TARGET_ROOT'], t2.name, run_id, config["FLOCK_PATH"], params['sha']], title=title)
     else:
-        return run_command([config['PYTHON_EXE'], "-u", "remoteExec.py", "exec-only", master.dns_name, key_location, t.name, TARGET_ROOT, t2.name, run_id], title=title)
+        return run_command([config['PYTHON_EXE'], "-u", "remoteExec.py", "exec-only", master.dns_name, key_location, t.name, config['TARGET_ROOT'], t2.name, run_id], title=title)
 
 def get_sha(repo, branch):
     proc = subprocess.Popen(["git", "ls-remote", repo], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -778,7 +777,8 @@ if __name__ == "__main__":
                       DEBUG=True,
                       PORT=9935,
                       FLOCK_PATH="/xchip/flock/bin/phlock",
-                      LOADBALANCE_PID_FILE="loadbalance.pid")
+                      LOADBALANCE_PID_FILE="loadbalance.pid",
+                      TARGET_ROOT = "/data2/runs")
     app.config.from_pyfile(args.config_path)
     load_starcluster_config(app.config)
 
