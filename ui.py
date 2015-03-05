@@ -43,11 +43,15 @@ config = LocalProxy(_get_current_config)
 def load_starcluster_config(app_config):
     config = ConfigParser.ConfigParser()
     config.read(app_config['STARCLUSTER_CONFIG'])
-    include_paths = config.get("global", "include", None)
-    if include_paths != None:
+
+    """
+    if the include section exist, process it
+    """
+    if config.has_option("global", "include"):
+        include_paths = config.get("global", "include")
         include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
         for path in include_paths:
-          config.read(path)
+            config.read(path)
 
     app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
     app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
@@ -55,7 +59,7 @@ def load_starcluster_config(app_config):
         app_config["CLUSTER_TEMPLATE"] = config.get("global", "DEFAULT_TEMPLATE")
 
     try:
-        dns_prefix = config.get("cluster %s" % app_config["CLUSTER_TEMPLATE"], "DNS_PREFIX") == "True"
+        dns_prefix = config.get("cluster %s" % app_config["CLUSTER_TEMPLATE"], "DNS_PREFIX").lower() == 'true'
     except ConfigParser.NoOptionError:
         dns_prefix = False
 
@@ -699,8 +703,8 @@ def show_prices():
     per_instance_price = {}
     for s in series:
         values = [x["y"] for x in s["data"]]
-        per_instance_price[s["name"]] = (prices.median(values), values[-1])
-    per_instance_price = [(n, v[0], v[1]) for n, v in per_instance_price.items()]
+        per_instance_price[s["name"]] = (s["zone"], s["itype"],prices.median(values), values[-1])
+    per_instance_price = [(n,v[0], v[1], v[2], v[3]) for n,v in per_instance_price.items()]
     per_instance_price.sort()
 
     for i in range(len(series)):
