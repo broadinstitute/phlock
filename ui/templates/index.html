@@ -36,7 +36,7 @@
         <h2>No instances running</h2>
     {% else %}
         <h2>Running instances ({{ hourly_rate }})</h2>
-        <table class="table">
+        <table class="table" id="running_instances">
             <thead>
             <tr>
                 <th>Type</th>
@@ -60,7 +60,7 @@
         <h2>No spot requests open</h2>
     {% else %}
         <h2>Open requests for additional nodes</h2>
-        <table class="table">
+        <table class="table" id="spot_instances">
             <thead>
             <tr>
                 <th>Type</th>
@@ -102,5 +102,19 @@
         {% endfor %}
     </ul>
 
+{% endblock %}
+{% block scripts %}
+
+<script>
+  $(document).ready(function() {
+  $("#spot_instances").dataTable({
+  "bPaginate": false
+  });
+  $("#running_instances").dataTable({
+  "bPaginate": false
+  });
+});
+
+</script>
 {% endblock %}
 

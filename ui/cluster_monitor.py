@@ -14,7 +14,7 @@ class Parameters:
         self.max_to_add=1
         self.max_instances=10
         self.min_instances=1
-        self.instance_type="r3.2xlarge"
+        self.instance_type="m1.small"
         self.dryrun=False
         self.log_file = None
         self.job_wait_time = 300
