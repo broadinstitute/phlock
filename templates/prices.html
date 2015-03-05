@@ -13,11 +13,17 @@
 
   <h1>Star cluster manager</h1>
 
-  <table class="table">
+  <table class="table" id="prices">
     <thead>
       <tr>
         <th>
-          instance type
+          Key
+        </th>
+	    <th>
+          Zone
+        </th>
+	    <th>
+          Instance Type
         </th>
         <th>
           Median price
@@ -28,11 +34,17 @@
       </tr>
     </thead>
     <tbody>
-      {% for instance, price, last in per_instance_price %}
+      {% for instance, zone, instance_type, price, last in per_instance_price %}
       <tr>
         <td>
           {{ instance }}
         </td>
+	    <td>
+         {{zone}} 
+        </td>
+	    <td>
+         {{instance_type}} 
+        </td>	
         <td>
           {{ price }}
         </td>
@@ -43,6 +55,7 @@
       {% endfor %}
     </tbody>
   </table>
+<br/><br/><br/><br/><br/>
 
 <div id="chart_container">
 	<div id="chart"></div>
@@ -62,7 +75,9 @@
 
 <script>
 $(document).ready(function() {
-  
+    $("#prices").dataTable({
+        "bPaginate": false
+    });
   var graph = new Rickshaw.Graph( {
   	element: document.querySelector("#chart"),
   	width: 600,
@@ -75,7 +90,7 @@ $(document).ready(function() {
   graph.render();
   
   var hoverDetail = new Rickshaw.Graph.HoverDetail( {
-  	graph: graph,
+    graph: graph,
     xFormatter: function(x) { return "hour "+(x.toFixed(1)) },
     yFormatter: function(y) { return "$" +y.toFixed(4) }
   } );
@@ -99,5 +114,4 @@ $(document).ready(function() {
       
 });
 </script>
-
 {% endblock %}

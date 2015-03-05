@@ -8,7 +8,7 @@
 
     <button id="kill-instances-button" class="btn">Kill</button>
 
-  <table class="table">
+  <table class="table" id="active_instances">
     <thead>
       <tr>
         <th>
@@ -58,7 +58,7 @@
 
     <h1>Open spot requests</h1>
     <button id="kill-spots-button" class="btn">Kill</button>
-    <table class="table">
+    <table class="table" id="spot_instances">
     <thead>
       <tr>
         <th>
@@ -111,6 +111,12 @@
 
     <script>
         $(function () {
+            $("#active_instances").dataTable({
+                "bPaginate": false
+             });
+             $("#spot_instances").dataTable({
+                "bPaginate": false
+             });
             // install select-all handler on checkbox
             $("#select-all-instances").on("click", function () {
                 var isChecked = $(this).is(":checked")

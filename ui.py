@@ -51,13 +51,18 @@ def convert_to_boolean(name, value):
 def load_starcluster_config(app_config):
     config = ConfigParser.ConfigParser()
     config.read(app_config['STARCLUSTER_CONFIG'])
-    try:
-        include_paths = config.get("global", "include")
-        include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
-        for path in include_paths:
-            config.read(path)
-    except ConfigParser.NoOptionError:
-        pass
+
+    """
+    if the include section exist, process it
+    """
+    if config.has_option("global", "include"):
+        try:
+            include_paths = config.get("global", "include")
+            include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
+            for path in include_paths:
+                config.read(path)
+        except ConfigParser.NoOptionError:
+            pass
 
     app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
     app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
@@ -726,8 +731,8 @@ def show_prices():
     per_instance_price = {}
     for s in series:
         values = [x["y"] for x in s["data"]]
-        per_instance_price[s["name"]] = (prices.median(values), values[-1])
-    per_instance_price = [(n, v[0], v[1]) for n, v in per_instance_price.items()]
+        per_instance_price[s["name"]] = (s["zone"], s["itype"],prices.median(values), values[-1])
+    per_instance_price = [(n,v[0], v[1], v[2], v[3]) for n,v in per_instance_price.items()]
     per_instance_price.sort()
 
     for i in range(len(series)):
