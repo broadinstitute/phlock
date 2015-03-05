@@ -1,4 +1,3 @@
-import sys
 import os
 import sqlite3
 import __init__ as flock
@@ -16,6 +15,7 @@ import time
 import glob
 import base64
 import hashlib
+import collections
 
 log = logging.getLogger("monitor")
 
@@ -45,9 +45,17 @@ MISSING = -2
 KILLED = -3
 KILL_PENDING = -4
 KILL_SUBMITTED = -5
+PREREQ_FAILED = -6
 
-status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED", COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING", KILLED: "KILLED", KILL_PENDING : "KILL_PENDING",
-                       KILL_SUBMITTED: "KILL_SUBMITTED"}
+# classes of states:
+#   successful completion: COMPLETED
+#   failed completion: KILLED, PREREQ_FAILED, FAILED
+#   waiting: WAITING
+#   in-progress: READY, SUBMITTED, STARTED, MISSING, KILL_PENDING, KILL_SUBMITTED
+
+status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED",
+                       COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING", KILLED: "KILLED",
+                       KILL_PENDING : "KILL_PENDING", KILL_SUBMITTED: "KILL_SUBMITTED", PREREQ_FAILED: "PREREQ_FAILED"}
 
 MONITOR_POLL_INTERVAL = 60
 def format_watch_command(flock_home, log_file):
@@ -291,7 +299,7 @@ class TaskStore:
             if len(rows) == 1:
                 run_id = rows[0][0]
                 # treating MISSING as the same as FAILED.  Perhaps there should be something that transforms MISSING tasks to FAILED after some timeout
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?, ?)", [WAITING, run_id, FAILED, KILLED, MISSING])
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?, ?, ?)", [WAITING, run_id, FAILED, KILLED, MISSING, PREREQ_FAILED])
         return True
 
     def kill_run(self, run_dir):
@@ -303,6 +311,10 @@ class TaskStore:
 
                 db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILL_PENDING, run_id, SUBMITTED, STARTED])
                 db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILLED, run_id, READY, WAITING])
+
+                # wake up main loop which is going to perform the actual killing
+                self._cv_created.notify_all()
+
         return True
 
     def find_tasks_by_status(self, status, limit=None):
@@ -335,13 +347,23 @@ class TaskStore:
             recs = db.fetchall()
         return recs
 
-    def count_unfinished_tasks_by_group_number(self, run_id):
-        result = {}
+    def count_tasks_by_group_number(self, run_id):
+        # record of the form (successfully_finished_count, terminated_count, in_flight_count, waiting_count)
+        result = collections.defaultdict(lambda: [0,0,0,0])
         with self.transaction() as db:
-            db.execute("SELECT group_number, count(*) FROM tasks WHERE status not in (?, ?, ?) AND run_id = ? group by group_number",
-                       [KILLED, FAILED, COMPLETED, run_id])
-            for number, count in db.fetchall():
-                result[number] = count
+            db.execute("SELECT group_number, status, count(*) FROM tasks WHERE run_id = ? group by group_number",
+                       [run_id])
+            for number, status, count in db.fetchall():
+                record = result[number]
+                if status in [COMPLETED]:
+                    record[0] += 1
+                elif status in [KILLED, FAILED, PREREQ_FAILED]:
+                    record[1] += 1
+                elif status in [WAITING]:
+                    record[2] += 1
+                else:
+                    record[3] += 1
+
         return result
 
     def get_config_path(self, run_id):
@@ -409,7 +431,6 @@ def identify_tasks_which_disappeared(store, queue):
     update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, KILLED)
 
 def submit_created_tasks(listener, store, queue_factory, max_submitted):
-
     submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
     # process all the waiting to make sure they've met their requirements
@@ -418,17 +439,25 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted):
     log.info("Found %d WAITING tasks", len(waiting_tasks))
     for run_id, task_dir, group in waiting_tasks:
         if not (run_id in count_cache):
-            counts_per_run = store.count_unfinished_tasks_by_group_number(run_id)
+            counts_per_run = store.count_tasks_by_group_number(run_id)
             count_cache[run_id] = counts_per_run
-        counts = count_cache[run_id]
+
+        counts_by_group = count_cache[run_id]
 
         # check to make sure that we've completed everything in groups earlier then this one
-        all_okay = True
-        for other_group, count in counts.items():
-            if other_group < group and count > 0:
-                all_okay = False
+        prereq_finished = True
+        prereq_failed = False
+        for other_group, counts in counts_by_group.items():
+            finished_count, failed_count, running_count, waiting_count = counts
+            if other_group < group:
+                if failed_count > 0:
+                    prereq_failed = True
+                elif running_count > 0:
+                    prereq_finished = False
 
-        if all_okay:
+        if prereq_failed:
+            store.set_task_status(task_dir, PREREQ_FAILED)
+        elif prereq_finished:
             store.set_task_status(task_dir, READY)
         else:
             log.debug("Could not run %s because needs to wait for another job", task_dir)
