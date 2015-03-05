@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Submit{% endblock %}
+{% block content %}
+
+    <form class="form-horizontal" role="form" method="post" action="/set-monitor-parameters">
+
+        <div class="form-group">
+            <label for="spot_bid" class="col-sm-3 control-label">Max price per cpu-hour</label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="spot_bid" name="spot_bid" value="{{ param.spot_bid }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="max_to_add" class="col-sm-3 control-label">max number of instances to add per iteration</label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="max_to_add" name="max_to_add"
+                       value="{{ param.max_to_add }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="instance_type" class="col-sm-3 control-label">instance_type</label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="instance_type" name="instance_type"
+                       value="{{ param.instance_type }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="min_instances" class="col-sm-3 control-label">min_instances</label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="min_instances" name="min_instances"
+                       value="{{ param.min_instances }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="max_instances" class="col-sm-3 control-label">max_instances</label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="max_instances" name="max_instances"
+                       value="{{ param.max_instances }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="job_wait_time" class="col-sm-3 control-label">
+                Maximum wait time for a job before adding nodes, seconds
+            </label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="job_wait_time" name="job_wait_time"
+                       value="{{ param.job_wait_time }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="stabilization_time" class="col-sm-3 control-label">
+                Cluster stabilization time
+            </label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="stabilization_time" name="stabilization_time"
+                       value="{{ param.stabilization_time }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <div class="col-sm-offset-3 col-sm-10">
+                <button name="submit" type="submit" class="btn btn-default">Update</button>
+            </div>
+        </div>
+
+
+
+    </form>
+
+{% endblock %}

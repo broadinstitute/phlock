@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Run {{ run_dir }}{% endblock %}
+
+{% block content %}
+  <a href="/list-run-files/{{ run_name }}">View all files in run</a>
+
+  <h1>Tasks for run {{ run_dir }}</h1>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>
+            Task
+        </th>
+
+        <th>
+            Size
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for task in tasks %}
+      <tr>
+        <td>
+            <a href="/list-run-files/{{ run_name }}/{{ task.task_dir }}">{{ task.task_dir }}</a>
+        </td>
+        <td>
+            {{ task.status }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% endblock %}
+
