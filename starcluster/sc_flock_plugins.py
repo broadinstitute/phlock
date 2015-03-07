@@ -139,7 +139,7 @@ exec ${flock_home}/bin/phlock-wingman sge ${run_dir}/jobdb.sqlite3 3010 --maxsub
 """)
     
     temp_wingman_script = tempfile.NamedTemporaryFile()
-    temp_wingman_script.write(wingman_script_template(flock_home=self.flock_home, run_dir=self.run_dir))
+    temp_wingman_script.write(wingman_script_template.substitute(flock_home=self.flock_home, run_dir=self.run_dir))
     temp_wingman_script.flush()
     
     wingman_conf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wingman.conf")
