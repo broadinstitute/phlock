@@ -2,15 +2,14 @@
 
 This is a lightweight library for executing map/reduce style jobs.  (Perhaps "scatter/gather" is a better description.)
 
-More specifically, in this library can be used to execute an R script on a vector or list of inputs, potentially submitting them to a queuing system where they'll execute asynchronously, and then 
-aggregate all of the results with a second R script.
+More specifically, in this library can be used to execute an R (or python) script on a list of inputs, submitting them to a queuing system where they'll execute asynchronously, and then 
+aggregate all of the results with a final "gather" script.
 
-There are three types of R-scripts invoked:
+There are three scripts invoked:
 
-1. Top level script: The first script invoked which creates the other tasks.   This script will have the following variables defined before it executes: `flock_run_dir`
+1. scatter script: The first script invoked which creates the other tasks.   This script will have the following variables defined before it executes: `flock_run_dir`
 2. Per-task script: The script executed per each task.  This script will have the following variable defined: `flock_run_dir`, `flock_job_dir`, `flock_input_file`, `flock_output_file`, `flock_script_name`, `flock_per_task_state`, `flock_common_state`
-3. Gather script: The final script executed after all jobs have completed successful.  This will have the following variables defined: `flock_run_dir`, `flock_job_dir`, 
-`flock_script_name`, `flock_common_state` and `flock_job_details`
+3. Gather script: The final script executed after all jobs have completed successful.  This will have the following variables defined: `flock_run_dir`, `flock_job_dir`, `flock_script_name`, `flock_common_state` and `flock_job_details`
 
 All state is coordinated on the filesystem under the following directory structure:
 
@@ -25,6 +24,10 @@ A directory per task          [run_id]/tasks/[task_id]
 
 If this file exists this task [run_id]/tasks/[task_id]/finished-time.txt 
 completed successful.
+
+If this file exists this task [run_id]/tasks/[task_id]/started-time.txt 
+started running at least 
+once.
 
 The per-task state for a      [run_id]/tasks/[task_id]/input.Rdata       
 task.
@@ -50,6 +53,7 @@ for this task.
 
 The "run_id" is also interpreted as the config file which specifies what exactly should be run.  (The syntax of the file is YAML)  For example, lets 
 assume we have a basic config file named "sample" with the following content:
+
 ```
 base_run_dir: /home/pgm/runs
 executor: lsf
@@ -95,30 +99,29 @@ execution engine is configured.
 ### To start a run
 By default, will wait for all tasks to complete.  Can be safely killed after all tasks have been submitted.
 ```
-flock run run-id
+flock run config.flock
 ```
-
 If the directory for the run already exists, it will abort to prevent overwriting existing files.
-
-### To print the state of all tasks which make up this task
-```
-flock check run-id
-```
 
 ### Resubmit all failed jobs for execution again.
 ```
-flock retry run-id
+flock retry config.flock
 ```
 
 ### To kill all running tasks associated with a run
 ```
-flock kill run-id
+flock kill config.flock
+```
+
+### To print the state of all tasks which make up this task
+```
+flock check config.flock
 ```
 
 ### To monitor a run
-Will print task states until all tasks are done
+Will print task states until all tasks are done.  The only difference between "check" and "poll" is poll prints the status periodically until all jobs are done.
 ```
-flock poll run-id
+flock poll config.flock
 ```
 
 ## Tasks states
@@ -127,6 +130,7 @@ Tasks get assigned one of three states:
 
 1. Created (this task exists only on disk)
 2. Submitting (this task has been submitted to the execution engine)
+3. Running (the job has started)
 3. Finished (this task successfully completed)
 4. Failed (this task was submitted but never successfully completed and is no longer in the execution engine's queue.)
 5. Waiting (this task is waiting for other tasks to complete before it starts)
