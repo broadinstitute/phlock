@@ -86,7 +86,7 @@ def flock_run(inputs, module_path, task_function_name, flock_settings=None, gath
       fd.write(" ".join(line) + "\n")
   
   if flock_settings["flock_notify_command"] != None:
-    subprocess.check_call("%s taskset %s %s" % (flock_settings["flock_notify_command"], flock_run_dir, taskset_file))
+    subprocess.check_call("%s taskset %s %s" % (flock_settings["flock_notify_command"], flock_run_dir, taskset_file), shell=True)
 
 def run_commands(commands):
   flock_run(commands, [], "flock_support:execute_shell_command")
