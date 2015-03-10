@@ -2,13 +2,17 @@ import urllib2
 import json
 
 
-instanceTypes = []
 
+machineNames = set()
 urlsToAmazonInstanceTypes = ['http://a0.awsstatic.com/pricing/1/ec2/linux-od.min.js','http://a0.awsstatic.com/pricing/1/ec2/previous-generation/linux-od.min.js']
 
 def reverseReplace(s, old, new, occurrence):
     li = s.rsplit(old, occurrence)
     return new.join(li)
+
+
+def responseToString(respString):
+    return str(respString)
 
 def convertKeysToJSON(javaScriptString):
     javaScriptString = javaScriptString.replace('vers:0.01,','')
@@ -32,10 +36,8 @@ def convertKeysToJSON(javaScriptString):
 
     return javaScriptString
 
-def responseToString(respString):
-    return str(respString)
-
 def getInstanceTypes():
+    instanceTypes = []
     for url in urlsToAmazonInstanceTypes:
         req = urllib2.Request(url)
         response = urllib2.urlopen(req)
@@ -50,7 +52,6 @@ def getInstanceTypes():
         #remove the last string ');' and anything after it
         javaScriptString = reverseReplace(javaScriptString,');','',1)
         javaScriptString = convertKeysToJSON(javaScriptString)
-
         #load the string as a json object
         dictionaryObject=json.loads(javaScriptString)
         configDict = dictionaryObject['config']
@@ -59,8 +60,9 @@ def getInstanceTypes():
             instanceTypesDict =  i['instanceTypes']
             for j in instanceTypesDict:
                 for w in j['sizes']:
-                    #collect the size the CPU and the memory
-                    instanceTypes.append((w['size'],w['vCPU'],w['memoryGiB']))
-
-#getInstanceTypes()
-#print instanceTypes
+                    machineName = w['size'].strip()
+                    if not machineName in machineNames:
+                        machineNames.add(machineName)
+                        #instanceTypes.append((machineName,w['vCPU'].strip(),w['memoryGiB'].strip()))
+                        instanceTypes.append((machineName,int(w['vCPU'].strip())))
+    return instanceTypes

@@ -730,7 +730,8 @@ def show_prices():
     per_instance_price = {}
     for s in series:
         values = [x["y"] for x in s["data"]]
-        per_instance_price[s["name"]] = (s["zone"], s["itype"],prices.median(values), values[-1])
+        if values: #ignore null or empty lists
+            per_instance_price[s["name"]] = (s["zone"], s["itype"],prices.median(values), values[-1])
     per_instance_price = [(n,v[0], v[1], v[2], v[3]) for n,v in per_instance_price.items()]
     per_instance_price.sort()
 
