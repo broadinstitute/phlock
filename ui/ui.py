@@ -234,7 +234,7 @@ def index():
     total = 0
     totalMem = 0
     for instance_type, count in instances.items():
-        mem = mem_per_instance[instance_type]
+        mem = mem_per_instance[instance_type] * count
         totalMem += mem
         cpus = cpus_per_instance[instance_type] * count
         total += cpus
