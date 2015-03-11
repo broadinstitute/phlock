@@ -63,6 +63,6 @@ def getInstanceTypes():
                     machineName = w['size'].strip()
                     if not machineName in machineNames:
                         machineNames.add(machineName)
-                        #instanceTypes.append((machineName,w['vCPU'].strip(),w['memoryGiB'].strip()))
-                        instanceTypes.append((machineName,int(w['vCPU'].strip())))
+                        instanceTypes.append((machineName,int(w['vCPU'].strip()),float(w['memoryGiB'].strip())))
+                        #instanceTypes.append((machineName,int(w['vCPU'].strip())))
     return instanceTypes

@@ -24,7 +24,7 @@ import cluster_monitor
 import argparse
 import logging
 import prices
-from instance_types import cpus_per_instance, instance_sizes
+from instance_types import cpus_per_instance, instance_sizes, mem_per_instance
 import batch_submit
 import json
 import base64
@@ -232,11 +232,14 @@ def index():
     instances = get_instance_counts(ec2)
     instance_table = []
     total = 0
+    totalMem = 0
     for instance_type, count in instances.items():
+        mem = mem_per_instance[instance_type]
+        totalMem += mem
         cpus = cpus_per_instance[instance_type] * count
         total += cpus
-        instance_table.append((instance_type, count, cpus))
-    instance_table.append(("Total", "", total))
+        instance_table.append((instance_type, count, cpus,mem))
+    instance_table.append(("Total", "", total,totalMem))
 
     active_terminals = terminal_manager.get_active_terminals()
     active_terminals.sort(lambda a, b: cmp(a.start_time, b.start_time))
@@ -254,7 +257,8 @@ def index():
         instance_type, price, status = k
         count = request_counts[k]
         cpus = cpus_per_instance[instance_type] * count
-        open_spot_requests.append( (instance_type, status, price, count, cpus) )
+        mem = mem_per_instance[instance_type]
+        open_spot_requests.append( (instance_type, status, price, count, cpus, mem))
 
     return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, cluster_state=cluster_state,
                                  manager_state=manager_state,
@@ -723,7 +727,7 @@ def show_prices():
 
     series = []
     for zone in ["us-east-1a", "us-east-1b", "us-east-1c"]:
-        for t, s in instance_sizes:
+        for t, s, m in instance_sizes:
             series.append(prices.get_price_series(ec2, t, s, zone))
 
     prices.normalize_series(series)

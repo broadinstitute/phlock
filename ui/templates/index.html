@@ -27,6 +27,7 @@
 
         <li><a href="/start-tunnel">start tunnel</a></li>
         <li><a href="/submit-batch-job-form">submit batch job</a></li>
+        
         <li><a href="/submit-flock-job-form">submit flock job</a></li>
         <li><a href="/job-dashboard">list jobs</a></li>
         <li><a href="/show-instances">manage instances and spot requests</a></li>
@@ -42,14 +43,16 @@
                 <th>Type</th>
                 <th>Count</th>
                 <th>CPUs</th>
+                <th>Memory in Gigs</th>
             </tr>
             </thead>
             <tbody>
-            {% for instance_type, count, cpus in instances %}
+            {% for instance_type, count, cpus, mem in instances %}
                 <tr>
                     <td>{{ instance_type }}</td>
                     <td>{{ count }}</td>
                     <td>{{ cpus }}</td>
+                    <td>{{ mem }}</td>
                 </tr>
             {% endfor %}
             </tbody>
@@ -68,16 +71,18 @@
                 <th>Price</th>
                 <th>Count</th>
                 <th>CPUs</th>
+                <th>Memory</th>
             </tr>
             </thead>
             <tbody>
-            {% for instance_type, status, price, count, cpus in open_spot_requests %}
+            {% for instance_type, status, price, count, cpus,mem in open_spot_requests %}
                 <tr>
                     <td>{{ instance_type }}</td>
                     <td>{{ status }}</td>
                     <td>{{ price }}</td>
                     <td>{{ count }}</td>
                     <td>{{ cpus }}</td>
+                    <td>{{ mem }}</td>
                 </tr>
             {% endfor %}
             </tbody>
