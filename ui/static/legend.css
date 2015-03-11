@@ -57,6 +57,8 @@
 	padding: 0;
 	margin: 2px;
 	cursor: pointer;
+    overflow-y: scroll;
+    max-height: 500px;
 }
 .rickshaw_legend li {
 	padding: 0 0 0 2px;
