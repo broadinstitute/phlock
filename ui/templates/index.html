@@ -24,10 +24,12 @@
     <ul>
         <li><a href="/prices">prices</a></li>
         <li><a href="/edit-monitor-parameters">Edit cluster parameters</a></li>
-
-        <li><a href="/start-tunnel">start tunnel</a></li>
-        <li><a href="/submit-batch-job-form">submit batch job</a></li>
-        
+        {%  if config.get("HIDE_TUNNEL_LINK", 'NO') == 'NO' %}
+            <li><a href="/start-tunnel">start tunnel</a></li>
+        {% endif %}
+        {%  if config.get("HIDE_BATCH_JOB_LINK", 'NO') == 'NO' %}
+            <li><a href="/submit-batch-job-form">submit batch job</a></li>
+        {% endif %}
         <li><a href="/submit-flock-job-form">submit flock job</a></li>
         <li><a href="/job-dashboard">list jobs</a></li>
         <li><a href="/show-instances">manage instances and spot requests</a></li>
