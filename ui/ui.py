@@ -24,7 +24,7 @@ import cluster_monitor
 import argparse
 import logging
 import prices
-from instance_types import cpus_per_instance, instance_sizes
+from instance_types import cpus_per_instance
 import batch_submit
 import json
 import base64
@@ -723,8 +723,9 @@ def show_prices():
 
     series = []
     for zone in ["us-east-1a", "us-east-1b", "us-east-1c"]:
-        for t, s in instance_sizes:
-            series.append(prices.get_price_series(ec2, t, s, zone))
+        for t, s in cpus_per_instance.items():
+            if t.startswith("r"):
+                series.append(prices.get_price_series(ec2, t, s, zone))
 
     prices.normalize_series(series)
     per_instance_price = {}

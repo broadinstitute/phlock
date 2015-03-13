@@ -1,6 +1,7 @@
+#!/usr/bin/python
+
 import urllib2
 import json
-
 
 instanceTypes = []
 
@@ -61,6 +62,20 @@ def getInstanceTypes():
                 for w in j['sizes']:
                     #collect the size the CPU and the memory
                     instanceTypes.append((w['size'],w['vCPU'],w['memoryGiB']))
+        return instanceTypes
 
 #getInstanceTypes()
 #print instanceTypes
+
+if __name__ == "__main__":
+    with open("ui/instance_types.py", "w") as fd:
+        instance_types = getInstanceTypes()
+        
+        # it doesn't look like the json request includes the m1.* types so manually specify these
+        cpus_per_instance={"m1.small": 1, "m1.medium": 1, "m1.large": 2, "m1.xlarge": 4}
+        
+        for size, cpus, memory in instance_types:
+            cpus_per_instance[size] = int(cpus)
+        
+        fd.write("cpus_per_instance = %r\n" % (cpus_per_instance))
+
