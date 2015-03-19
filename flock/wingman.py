@@ -479,7 +479,11 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted):
 
         queue = queue_cache[run_id]
 
-        queue.submit(run_id, os.path.join(run_dir, task_dir), "scatter" in task_dir)
+        try:
+            queue.submit(run_id, os.path.join(run_dir, task_dir), "scatter" in task_dir)
+        except:
+            log.exception("Got exception submitting %s %s", run_dir, task_dir)
+            store.set_task_status(task_dir, FAILED)
 
 
 def main_loop(endpoint_url, flock_home, store, max_submitted, localQueue = False):
