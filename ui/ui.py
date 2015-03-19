@@ -748,6 +748,77 @@ def kill_spots():
     ec2.cancel_spot_instance_requests(ids)
     return redirect_with_success("cancelled %d spot requests"%len(ids), "/")
 
+def read_task_profile(run_dir, file_path):
+    import StringIO
+    import csv
+
+    service = get_wingman_service()
+    files = service.get_run_files(run_dir, file_path)
+    assert len(files) == 1
+    length = files[0]['size']
+
+    buffer = StringIO.StringIO()
+
+    offset = 0
+    read_size = 50000
+    while offset < length:
+        payload = service.get_file_content(run_dir, file_path, offset, read_size)
+        content = base64.standard_b64decode(payload['data'])
+        offset += read_size
+        if offset < length:
+            assert len(content) == read_size
+        buffer.write(content)
+
+    buffer.seek(0)
+    reader = csv.DictReader(buffer, delimiter=" ")
+    l_utime = []
+    l_stime = []
+    l_vsizeMB = []
+    l_rssMB = []
+    prev_x = None
+    first_x = None
+    for row in reader:
+        if row["utime"] == "NA":
+            continue
+
+        x = float(row["timestamp"])
+        if first_x == None:
+            first_x = x
+        time_in_minutes = (x-first_x) / (60.0)
+        utime = float(row["utime"])
+        stime = float(row["stime"])
+
+        if prev_x != None:
+            delta_x = x - prev_x
+            l_utime.append(dict(x=time_in_minutes, y=100*(utime-prev_utime)/delta_x))
+            l_stime.append(dict(x=time_in_minutes, y=100*(stime-prev_stime)/delta_x))
+
+        prev_utime = utime
+        prev_stime = stime
+        prev_x = x
+
+        l_vsizeMB.append(dict(x=time_in_minutes, y=float(row["vsizeMB"])))
+        l_rssMB.append(dict(x=time_in_minutes, y=float(row["rssMB"])))
+
+    return ([dict(data=l_utime, color="lightblue", name="utime"),
+            dict(data=l_stime, color="black", name="stime")],
+            [dict(data=l_vsizeMB, color="red", name="vsizeMB"),
+             dict(data=l_rssMB, color="black", name="rssMB")])
+
+
+@app.route("/show-task-profile/<run_name>/<path:task_dir>")
+def show_task_profile(run_name, task_dir):
+    # result = dict(
+    #     data=[dict(x=(isotodatetime(p.timestamp) - end_time).seconds / (60.0 * 60), y=p.price / scale) for p in prices],
+    #     name="%s %s" % (zone, instance_type),
+    #     zone="%s" % (zone),
+    #     itype="%s" % (instance_type),
+    #     color="lightblue")
+
+    file_path = task_dir+"/proc_stats.txt"
+    cpu_series, mem_series = read_task_profile(config['TARGET_ROOT'] + "/" + run_name + "/files", file_path=file_path)
+    return flask.render_template("task_profile.html", run_name=run_name, cpu_series=cpu_series, mem_series=mem_series)
+
 @app.route("/prices")
 def show_prices():
     ec2 = get_ec2_connection()

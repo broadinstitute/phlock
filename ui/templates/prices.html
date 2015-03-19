@@ -92,7 +92,7 @@ $(document).ready(function() {
   var hoverDetail = new Rickshaw.Graph.HoverDetail( {
     graph: graph,
     xFormatter: function(x) { return "hour "+(x.toFixed(1)) },
-    yFormatter: function(y) { return "$" +y.toFixed(4) }
+    yFormatter: function(y) { return y.toFixed(4) }
   } );
 
   var legend = new Rickshaw.Graph.Legend( {

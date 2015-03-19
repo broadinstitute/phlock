@@ -17,6 +17,10 @@
         <th>
             Size
         </th>
+
+        <th>
+            Profile
+        </th>
       </tr>
     </thead>
     <tbody>
@@ -28,6 +32,11 @@
         <td>
             {{ task.status }}
         </td>
+
+        <td>
+            <a href="/show-task-profile/{{ run_name }}/{{ task.task_dir }}">Profile</a>
+        </td>
+
       </tr>
       {% endfor %}
     </tbody>

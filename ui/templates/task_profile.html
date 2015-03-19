@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Task Profile{% endblock %}
+
+{% block head %}
+  {{ super() }}
+<link type="text/css" rel="stylesheet" href="/static/graph.css">
+<link type="text/css" rel="stylesheet" href="/static/detail.css">
+<link type="text/css" rel="stylesheet" href="/static/legend.css">
+<link type="text/css" rel="stylesheet" href="/static/lines.css">
+{% endblock %}
+  
+{% block content %}
+
+<a href="/run/{{ run_name }}">Return to run {{ run_name }}</a>
+
+<h2>CPU Usage</h2>
+<div id="cpu_chart_container">
+	<div id="cpu_chart"></div>
+	<div id="cpu_legend_container">
+		<div id="cpu_smoother" title="Smoothing"></div>
+		<div id="cpu_legend"></div>
+	</div>
+	<div id="cpu_slider"></div>
+</div>
+
+<h2>Memory Usage</h2>
+<div id="mem_chart_container">
+	<div id="mem_chart"></div>
+	<div id="mem_legend_container">
+		<div id="mem_smoother" title="Smoothing"></div>
+		<div id="mem_legend"></div>
+	</div>
+	<div id="mem_slider"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+
+<script src="/static/d3.v2.js"></script>
+<script src="/static/rickshaw.min.js"></script>
+
+<script>
+$(document).ready(function() {
+  var cpu_graph = new Rickshaw.Graph( {
+  	element: document.querySelector("#cpu_chart"),
+  	width: 900,
+  	height: 200,
+  	renderer: 'line',
+    interpolation: 'linear',
+  	series: {{ cpu_series|tojson|safe }}
+  } );
+  
+  cpu_graph.render();
+
+  var mem_graph = new Rickshaw.Graph( {
+  	element: document.querySelector("#mem_chart"),
+  	width: 900,
+  	height: 200,
+  	renderer: 'line',
+    interpolation: 'linear',
+  	series: {{ mem_series|tojson|safe }}
+  } );
+
+  mem_graph.render();
+
+  var cpu_hoverDetail = new Rickshaw.Graph.HoverDetail( {
+    graph: cpu_graph,
+    xFormatter: function(x) { return "minute "+(x.toFixed(1)) },
+    yFormatter: function(y) { return y.toFixed(0)+"%" }
+  } );
+
+  var mem_hoverDetail = new Rickshaw.Graph.HoverDetail( {
+    graph: mem_graph,
+    xFormatter: function(x) { return "minute "+(x.toFixed(1)) },
+    yFormatter: function(y) { return y.toFixed(0)+" MB" }
+  } );
+
+{#  var legend = new Rickshaw.Graph.Legend( {#}
+{#  	graph: cpu_graph,#}
+{#  	element: document.getElementById('cpu_legend')#}
+{#  } );#}
+
+{#  var shelving = new Rickshaw.Graph.Behavior.Series.Toggle( {#}
+{#  	graph: graph,#}
+{#  	legend: legend#}
+{#  } );#}
+
+  var cpu_yAxis = new Rickshaw.Graph.Axis.Y({
+      graph: cpu_graph
+  });
+
+  cpu_yAxis.render();
+
+  var mem_yAxis = new Rickshaw.Graph.Axis.Y({
+      graph: mem_graph
+  });
+
+  mem_yAxis.render();
+
+});
+</script>
+{% endblock %}
