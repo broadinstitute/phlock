@@ -36,7 +36,6 @@ from werkzeug.local import LocalProxy
 def _get_current_config():
     return flask.current_app.config
 
-
 config = LocalProxy(_get_current_config)
 
 def convert_to_boolean(name, value):
@@ -526,8 +525,12 @@ def archive_jobs():
     for job_name in job_ids:
         service.delete_run(get_run_dir_for_job_name(job_name))
 
-    return run_starcluster_cmd(["sshmaster", config['CLUSTER_NAME'], "--user", "ubuntu",
-                            "mv " + " ".join([config['TARGET_ROOT'] + "/" + job_id for job_id in job_ids])+ " " + os.path.join(config['TARGET_ROOT'], destination)])
+    ec2 = get_ec2_connection()
+    master, key_location = get_master_info(ec2)
+
+    cmd = "mv " + " ".join([config['TARGET_ROOT'] + "/" + job_id for job_id in job_ids])+ " " + os.path.join(config['TARGET_ROOT'], destination)
+
+    return run_command(["ssh", "-o", "UserKnownHostsFile=/dev/null", "-o", "StrictHostKeyChecking=no", "-i", key_location, "ubuntu@"+master.dns_name, cmd], "Moving runs to %s" % destination)
 
 @app.route("/retry-jobs", methods=["POST"])
 @secured
@@ -563,11 +566,8 @@ def get_current_timestamp():
     return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
-def submit_job(flock_config, params, transfer_from_git=True):
-    #assert params["repo"] != None
-    #assert params["branch"] != None
+def generate_run_command(flock_config, params):
     assert params["run_id"] != None
-    #assert params["sha"] != None
 
     ec2 = get_ec2_connection()
     master, key_location = get_master_info(ec2)
@@ -584,14 +584,11 @@ def submit_job(flock_config, params, transfer_from_git=True):
     sorted_keys.sort()
 
     run_id = params['run_id']
+
+    cmd = [config['PYTHON_EXE'], "-u", "remoteExec.py", "exec-only", master.dns_name, key_location, t.name, config['TARGET_ROOT'], t2.name, run_id]
     title = "Run %s: %s" % (run_id, ", ".join([str(params[k]) for k in sorted_keys if not (k in ["run_id", "sha", "repo", "branch", "config"]) ]))
 
-    if transfer_from_git:
-        return run_command(
-            [config['PYTHON_EXE'], "-u", "remoteExec.py", master.dns_name, key_location, params["repo"], params["branch"], t.name,
-             config['TARGET_ROOT'], t2.name, run_id, config["FLOCK_PATH"], params['sha']], title=title)
-    else:
-        return run_command([config['PYTHON_EXE'], "-u", "remoteExec.py", "exec-only", master.dns_name, key_location, t.name, config['TARGET_ROOT'], t2.name, run_id], title=title)
+    return (cmd, title)
 
 def get_sha(repo, branch):
     proc = subprocess.Popen(["git", "ls-remote", repo], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -622,12 +619,31 @@ def submit_flock_job():
     flock_config_str = flock_config.read()
 
     timestamp = get_current_timestamp()
-    submit_job(flock_config_str, {'run_id': timestamp}, transfer_from_git=False)
-    return redirect_with_success("submitted %s" % (timestamp, ), "/")
+
+    cmd, title = generate_run_command(flock_config_str, {'run_id': timestamp})
+    return run_command(cmd, title=title)
+
+
+def deploy_code_from_git_command(repo, branch, sha):
+    ec2 = get_ec2_connection()
+    master, key_location = get_master_info(ec2)
+
+    sha_code_dir = config['TARGET_ROOT'] + "/code-cache/"+sha
+
+    args = [config['PYTHON_EXE'], "-u", "deploy_from_git.py", master.dns_name, key_location, repo, branch, sha_code_dir]
+    return args
+
+def write_shell_command(fd, command):
+    quoted = []
+    for x in command:
+        quoted.append("'"+x+"'")
+    fd.write(" ".join(quoted)+"\n")
 
 @app.route("/submit-batch-job", methods=["POST"])
 @secured
 def submit_batch_job():
+    # hack assumes that username portion of email address is sufficient
+    username = flask.session['email'].split("@")[0]
     template_file = request.files["template"]
     template_str = template_file.read()
 
@@ -640,13 +656,28 @@ def submit_batch_job():
     repo = request.values["repo"]
     branch = request.values["branch"]
     sha = get_sha(repo, branch)
-    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str, timestamp, {"repo": repo, "branch": branch, "sha": sha})
+
+    # do the deploy
+
+    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str, timestamp, {"repo": repo, "branch": branch, "sha": sha, 'username': username})
 
     submit = request.values['submit']
     if submit == 'submit':
+        # make a temp script which performs the deploy and kicks off the jobs.  Why do it like this?  Mostly legacy because
+        # the pieces to do this are in separate scripts.  The code could be all run within this process but having it run from a script
+        # does add some isolation in case something fails in an unexpected way.  This is all a little ridiculous and hacky but it should work.
+
+        t = tempfile.NamedTemporaryFile(delete=False)
+        t.write("set -ex\n")
+        cmd = deploy_code_from_git_command(repo, branch, sha)
+        write_shell_command(t, cmd)
         for params, flock in json_and_flock:
-            submit_job(flock, params, transfer_from_git=True)
-        return redirect_with_success("submitted %d jobs" % (len(json_and_flock)), "/")
+            cmd, title = generate_run_command(flock, params)
+            write_shell_command(t, cmd)
+
+        t.close()
+
+        return run_command(["bash", t.name], "submitting %d jobs" % (len(json_and_flock)))
 
     elif submit == 'export':
         params, flock_config = json_and_flock[0]

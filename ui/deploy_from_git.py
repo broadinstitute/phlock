@@ -4,21 +4,26 @@ import fabric.contrib.files
 import fabric.network
 import tempfile
 import logging
+import json
+import sshxmlrpc
+import uuid
+import os.path
 
-CODE_DIR = "/data2/code-cache"
 logging.basicConfig(level=logging.WARN)
 log = logging.getLogger("remoteExec")
 
 def exists(path, verbose=False):
     return run("/usr/bin/test -e %s" % path, warn_only=True, quiet=True).return_code == 0
 
-def deploy_code_from_git(repo, sha, branch):
-    sha_code_dir = CODE_DIR+"/"+sha
-    if not exists(sha_code_dir, verbose=True):
-        log.info("Deploying code to %s" % sha_code_dir)
+def get_random_id():
+    return str(uuid.uuid4())
 
-        # create target directory where the code will live
-        run("mkdir -p "+sha_code_dir)
+def deploy_code_from_git(sha_code_dir, repo, branch):
+    code_dir = os.path.dirname(sha_code_dir)
+    random_fn = get_random_id()
+    temp_code_dir = code_dir+"/.temp-"+random_fn
+    if not exists(sha_code_dir, verbose=True):
+        print("Deploying code to %s" % sha_code_dir)
 
         # construct zip file from git and copy to host
         with tempfile.NamedTemporaryFile() as zip_temp_file:
@@ -27,35 +32,29 @@ def deploy_code_from_git(repo, sha, branch):
             # to locally mirror the repo, but this such a small volume project, I'll delay implementing that.
             local("git archive --remote "+repo+" -o "+zip_temp_file_name+" --format=zip "+branch)
     
-            target_zip_file = CODE_DIR+"/"+sha+".zip"
+            target_zip_file = code_dir+"/.temp-"+random_fn+".zip"
             put(zip_temp_file_name, target_zip_file)
 
+        # create target directory where the code will live
+        run("mkdir -p "+temp_code_dir)
+
         # extract the file into the code directory and clean up            
-        with cd(sha_code_dir):
+        with cd(temp_code_dir):
             run("unzip "+target_zip_file)
+
+        run("mv "+temp_code_dir+" "+sha_code_dir)
         run("rm "+target_zip_file)
     else:
-        log.warn("Code already deployed to %s, skipping deploy" % sha_code_dir)
+        print("Code already deployed to %s, skipping deploy" % sha_code_dir)
 
-    return sha_code_dir
-
-import paramiko
-
-
-def deploy(host, key_filename, repo, branch, sha):
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(host, username="ubuntu", key_filename=key_filename)
-
-    try:
-        with settings(host_string=host, key_filename=key_filename, user="root"):
-            deploy_code_from_git(repo, sha, branch)
-
-    finally:
-        fabric.network.disconnect_all()
+def deploy(host, key_filename, repo, branch, sha_code_dir):
+    with settings(host_string=host, key_filename=key_filename, user="root"):
+        deploy_code_from_git(sha_code_dir, repo, branch)
 
 if __name__ == "__main__":
-    deploy(*sys.argv[1:])
-
+    try:
+        deploy(*sys.argv[1:])
+    finally:
+        fabric.network.disconnect_all()
 
 
