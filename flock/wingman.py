@@ -351,7 +351,7 @@ class TaskStore:
         # record of the form (successfully_finished_count, terminated_count, in_flight_count, waiting_count)
         result = collections.defaultdict(lambda: [0,0,0,0])
         with self.transaction() as db:
-            db.execute("SELECT group_number, status, count(*) FROM tasks WHERE run_id = ? group by group_number",
+            db.execute("SELECT group_number, status, count(*) FROM tasks WHERE run_id = ? group by group_number, status",
                        [run_id])
             for number, status, count in db.fetchall():
                 record = result[number]
