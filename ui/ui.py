@@ -672,7 +672,8 @@ def submit_batch_job():
     if "template_file" in request.files:
         template_file = request.files["template_file"]
         template_str = template_file.read()
-    else:
+
+    if template_str == "":
         template_str = request.values["template"]
 
     repo = request.values["repo"]
