@@ -150,6 +150,9 @@
                 Job name
             </th>
             <th>
+                <!-- re-run -->
+            </th>
+            <th>
                 State
             </th>
             {% for c in column_names %}
@@ -176,6 +179,11 @@
                 <td>
                     {% if j.name != None %}
                         <a class="job-name-link" href="/run/{{ j.name }}">{{ j.name }}</a>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if j.parameters.parameter_hash %}
+                    <a href="/submit-batch-job-form?parameter_hash={{ j.parameters.parameter_hash }}" class="btn"><span class="glyphicon glyphicon-repeat"></span></a>
                     {% endif %}
                 </td>
                 <td>

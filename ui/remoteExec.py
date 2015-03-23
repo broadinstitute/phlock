@@ -97,7 +97,7 @@ def submit_to_wingman(host, key_filename, target_dir, timestamp, remote_config, 
 
 def deploy(host, key_filename, repo, branch, config_file, target_root, json_params, timestamp, flock_path, sha):
     with settings(host_string=host, key_filename=key_filename, user="root"):
-        sha_code_dir = deploy_code_from_git(target_root+"/code_cache", repo, sha, branch)
+        sha_code_dir = deploy_code_from_git(target_root+"/code-cache", repo, sha, branch)
 
         params = json.loads(open(json_params).read())
         params["sha"] = sha

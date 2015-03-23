@@ -9,6 +9,8 @@ import term
 import socket
 import sys
 import traceback
+from hashlib import md5
+import shelve
 
 from flask.ext.openid import OpenID
 
@@ -489,7 +491,7 @@ def job_dashboard():
     flattened = adhoc.find_with_tags(flattened, filter_tags)
 
     summary = adhoc.summarize(flattened)
-    for x in ["run_id", "job_dir", "status", "job_name"]:
+    for x in ["run_id", "job_dir", "status", "job_name", "parameter_hash"]:
         if x in summary:
             del summary[x]
 
@@ -605,7 +607,20 @@ def get_sha(repo, branch):
 @app.route("/submit-batch-job-form")
 @secured
 def submit_batch_job_form():
-    return flask.render_template("submit-batch-job-form.html", default_repo="ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", default_branch="refs/heads/master")
+    parameters = {'repo':"ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", 'branch':"refs/heads/master"}
+
+    if "parameter_hash" in request.values:
+        hash = str(request.values["parameter_hash"])
+
+        m = shelve.open(config["SUBMISSION_HISTORY"])
+        if hash in m:
+            parameters_json = m[hash]
+            parameters = json.loads(parameters_json)
+        else:
+            flask.flash("Could not find parameters", 'danger')
+
+
+    return flask.render_template("submit-batch-job-form.html", **parameters)
 
 @app.route("/submit-flock-job-form")
 @secured
@@ -639,13 +654,30 @@ def write_shell_command(fd, command):
         quoted.append("'"+x+"'")
     fd.write(" ".join(quoted)+"\n")
 
+def save_submit_parameters(config_defs, template_str, repo, branch, sha):
+    parameters_json = json.dumps(dict(config_defs=config_defs, template_str=template_str, repo=repo, branch=branch, sha=sha), sort_keys=True)
+    parameter_hash = md5(parameters_json).hexdigest()
+    m = shelve.open(config["SUBMISSION_HISTORY"])
+    # save parameters
+    m[parameter_hash] = parameters_json
+    m.close()
+
+    return parameter_hash
+
 @app.route("/submit-batch-job", methods=["POST"])
 @secured
 def submit_batch_job():
     # hack assumes that username portion of email address is sufficient
     username = flask.session['email'].split("@")[0]
-    template_file = request.files["template"]
-    template_str = template_file.read()
+    if "template_file" in request.files:
+        template_file = request.files["template_file"]
+        template_str = template_file.read()
+    else:
+        template_str = request.values["template"]
+
+    repo = request.values["repo"]
+    branch = request.values["branch"]
+    sha = get_sha(repo, branch)
 
     if request.values['config_defs'] == "":
         config_defs = [{}]
@@ -653,13 +685,10 @@ def submit_batch_job():
         config_defs = json.loads(request.values['config_defs'])
 
     timestamp = get_current_timestamp()
-    repo = request.values["repo"]
-    branch = request.values["branch"]
-    sha = get_sha(repo, branch)
 
-    # do the deploy
+    parameter_hash = save_submit_parameters(config_defs, template_str, repo, branch, sha)
 
-    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str, timestamp, {"repo": repo, "branch": branch, "sha": sha, 'username': username})
+    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str, timestamp, {"repo": repo, "branch": branch, "sha": sha, 'username': username, "parameter_hash": parameter_hash})
 
     submit = request.values['submit']
     if submit == 'submit':
@@ -882,6 +911,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     app.config.update(LOG_FILE='clusterui.log',
+                      SUBMISSION_HISTORY="submission_history.shelve",
                       DEBUG=True,
                       PORT=9935,
                       FLOCK_PATH="/xchip/flock/bin/phlock",
