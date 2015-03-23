@@ -348,7 +348,7 @@ class TaskStore:
         return recs
 
     def count_tasks_by_group_number(self, run_id):
-        # record of the form (successfully_finished_count, terminated_count, in_flight_count, waiting_count)
+        # record of the form (finished_count, failed_count, running_count, waiting_count)
         result = collections.defaultdict(lambda: [0,0,0,0])
         with self.transaction() as db:
             db.execute("SELECT group_number, status, count(*) FROM tasks WHERE run_id = ? group by group_number, status",
@@ -360,9 +360,9 @@ class TaskStore:
                 elif status in [KILLED, FAILED, PREREQ_FAILED]:
                     record[1] += 1
                 elif status in [WAITING]:
-                    record[2] += 1
-                else:
                     record[3] += 1
+                else:
+                    record[2] += 1
 
         return result
 
