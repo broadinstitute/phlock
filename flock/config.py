@@ -3,6 +3,7 @@ import logging
 import os
 import base64
 import hashlib
+import re
 
 log = logging.getLogger("flock")
 
@@ -68,20 +69,17 @@ def load_config(filenames, run_id, overrides):
     if not ( "gather_bsub_options" in config ):
         config["gather_bsub_options"] = config["bsub_options"]
 
-    lower_normal_job_priority = False
     if not ( "scatter_qsub_options" in config ):
         config["scatter_qsub_options"] = config["qsub_options"]
-        lower_normal_job_priority = True
 
     if not ( "gather_qsub_options" in config ):
         config["gather_qsub_options"] = config["qsub_options"]
-        lower_normal_job_priority = True
 
-    if lower_normal_job_priority:
+    if re.search("(?:^|\\s+)-p -?\\d+") == None:
+        # This is a bit of a hack:  Try to see if a priority has been manually specified.  If not, specify it.
         # if the scatter qsub options are not set, then default to scatter jobs getting
         # a higher priority.  However, it appears non-admins can't submit jobs with >0 priority
         # so instead, make all other jobs lower priority
-        # probably a better way of handling this would be to inspect qsub options and only add -p if it doesn't look like it's being set
         config["qsub_options"] = config["qsub_options"] + " -p -5"
 
     if not ("run_id" in config):
