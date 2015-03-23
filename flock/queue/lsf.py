@@ -49,10 +49,14 @@ class LSFQueue(AbstractQueue):
     def add_to_queue(self, task_full_path, is_scatter, script_to_execute, stdout, stderr):
         d = task_full_path
         cmd = ["bsub", "-o", stdout, "-e", stderr, "-cwd", self.workdir]
-        if is_scatter:
+        if task_type == "scatter":
+            cmd.extend(self.scatter_bsub_options)
+        elif task_type == "gather":
+            cmd.extend(self.gather_bsub_options)
+        elif task_type == "normal":
             cmd.extend(self.bsub_options)
         else:
-            cmd.extend(self.scatter_bsub_options)
+            raise Exception("Invalid task type: %r" % (task_type,))
         cmd.append("bash %s" % script_to_execute)
         log.info("EXEC: %s", cmd)
         handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)

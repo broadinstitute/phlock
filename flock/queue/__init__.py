@@ -96,7 +96,7 @@ class AbstractQueue(object):
         self.last_estimate = None
         self.listener = listener
 
-    def submit(self, run_id, task_full_path, is_scatter):
+    def submit(self, run_id, task_full_path, task_type):
         self.clean_task_dir(task_full_path)
         d = task_full_path
 
@@ -106,7 +106,7 @@ class AbstractQueue(object):
 
         script_to_execute, stdout, stderr = self.listener.presubmit(run_id, task_full_path, script_to_execute, stdout, stderr)
 
-        self.add_to_queue(task_full_path, is_scatter, script_to_execute, stdout, stderr)
+        self.add_to_queue(task_full_path, task_type, script_to_execute, stdout, stderr)
 
     def get_last_estimate(self):
         return self.last_estimate

@@ -61,7 +61,7 @@ class SGEQueue(AbstractQueue):
                 active_jobs[job_id] = flock.QUEUED_UNKNOWN
         return active_jobs
 
-    def add_to_queue(self, task_full_path, is_scatter, script_to_execute, stdout_path, stderr_path):
+    def add_to_queue(self, task_full_path, task_type, script_to_execute, stdout_path, stderr_path):
         d = task_full_path
 
         task_path_comps = d.split("/")
@@ -72,10 +72,14 @@ class SGEQueue(AbstractQueue):
         job_name = "%s-%s" % (task_name, self.safe_name)
 
         cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", stdout_path, "-e", stderr_path]
-        if is_scatter:
+        if task_type == "scatter":
             cmd.extend(self.scatter_qsub_options)
-        else:
+        elif task_type == "gather":
+            cmd.extend(self.gather_qsub_options)
+        elif task_type == "normal":
             cmd.extend(self.qsub_options)
+        else:
+            raise Exception("Invalid task type: %r" % (task_type,))
         cmd.extend([script_to_execute])
         log.info("EXEC: %s", cmd)
         handle = subprocess.Popen(cmd, stdout=subprocess.PIPE, cwd=self.workdir)
