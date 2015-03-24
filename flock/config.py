@@ -75,7 +75,7 @@ def load_config(filenames, run_id, overrides):
     if not ( "gather_qsub_options" in config ):
         config["gather_qsub_options"] = config["qsub_options"]
 
-    if re.search("(?:^|\\s+)-p -?\\d+") == None:
+    if re.search("(?:^|\\s+)-p -?\\d+", config["qsub_options"]) == None:
         # This is a bit of a hack:  Try to see if a priority has been manually specified.  If not, specify it.
         # if the scatter qsub options are not set, then default to scatter jobs getting
         # a higher priority.  However, it appears non-admins can't submit jobs with >0 priority
