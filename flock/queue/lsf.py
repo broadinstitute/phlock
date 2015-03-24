@@ -9,10 +9,11 @@ log = logging.getLogger("flock")
 
 
 class LSFQueue(AbstractQueue):
-    def __init__(self, listener, bsub_options, scatter_bsub_options, workdir):
+    def __init__(self, listener, bsub_options, scatter_bsub_options, gather_bsub_options, workdir):
         super(LSFQueue, self).__init__(listener)
         self.bsub_options = split_options(bsub_options)
         self.scatter_bsub_options = split_options(scatter_bsub_options)
+        self.gather_bsub_options = split_options(gather_bsub_options)
         self.workdir = workdir
         self.external_id_prefix = "LSF:"
 
@@ -46,7 +47,7 @@ class LSFQueue(AbstractQueue):
                 active_jobs[job_id] = s
         return active_jobs
 
-    def add_to_queue(self, task_full_path, is_scatter, script_to_execute, stdout, stderr):
+    def add_to_queue(self, task_full_path, task_type, script_to_execute, stdout, stderr):
         d = task_full_path
         cmd = ["bsub", "-o", stdout, "-e", stderr, "-cwd", self.workdir]
         if task_type == "scatter":

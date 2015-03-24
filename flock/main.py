@@ -65,9 +65,9 @@ def main(cmd_line_args=None):
     elif config.executor == "local":
         job_queue = LocalQueue(listener, config.workdir)
     elif config.executor == "sge":
-        job_queue = SGEQueue(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir)
+        job_queue = SGEQueue(listener, config.qsub_options, config.scatter_qsub_options, config.gather_qsub_options, config.name, config.workdir)
     elif config.executor == "lsf":
-        job_queue = LSFQueue(listener, config.bsub_options, config.scatter_bsub_options, config.workdir)
+        job_queue = LSFQueue(listener, config.bsub_options, config.scatter_bsub_options, config.gather_bsub_options, config.workdir)
     elif config.executor == "wingman":
         assert args.command == "submit"
         # hack because flock below needs a job queue

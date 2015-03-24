@@ -31,10 +31,11 @@ def rewrite_options_with_override(options, override_req_mem_in_megs):
     return options
 
 class SGEQueue(AbstractQueue):
-    def __init__(self, listener, qsub_options, scatter_qsub_options, name, workdir, override_req_mem_in_megs=None):
+    def __init__(self, listener, qsub_options, scatter_qsub_options, gather_qsub_options, name, workdir, override_req_mem_in_megs=None):
         super(SGEQueue, self).__init__(listener)
         self.qsub_options = rewrite_options_with_override(split_options(qsub_options), override_req_mem_in_megs)
         self.scatter_qsub_options = rewrite_options_with_override(split_options(scatter_qsub_options), override_req_mem_in_megs)
+        self.gather_qsub_options = rewrite_options_with_override(split_options(gather_qsub_options), override_req_mem_in_megs)
         self.external_id_prefix = "SGE:"
 
         self.name = name

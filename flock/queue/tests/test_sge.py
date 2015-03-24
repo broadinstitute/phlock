@@ -34,7 +34,7 @@ popen_qstat_mock = mock_popen(JOB_XML)
 @mock.patch("subprocess.Popen", popen_qstat_mock)
 def test_get_jobs():
     listener = mock.Mock()
-    queue = SGEQueue(listener, "", "", "name", "workdir")
+    queue = SGEQueue(listener, "", "", "", "name", "workdir")
 
     jobs = queue.get_jobs_from_external_queue()
     popen_qstat_mock.assert_called_once_with(['qstat', '-xml'], stdout=subprocess.PIPE)
@@ -47,8 +47,8 @@ qsub_popen_mock = mock_popen("Your job 3 (\"name\") has been submitted")
 @mock.patch("subprocess.Popen", qsub_popen_mock)
 def test_add_to_queue():
     listener = mock.Mock()
-    queue = SGEQueue(listener, "", "", "name", "workdir")
-    queue.add_to_queue("/home/task", False, "/home/task/task.sh", "/home/task/stdout.txt", "/home/task/stderr.txt")
+    queue = SGEQueue(listener, "", "", "", "name", "workdir")
+    queue.add_to_queue("/home/task", "normal", "/home/task/task.sh", "/home/task/stdout.txt", "/home/task/stderr.txt")
 
     qsub_popen_mock.assert_called_once_with(
         ["qsub", "-N", "task-name", "-V", "-b", "n", "-cwd", "-o", "/home/task/stdout.txt", "-e",
@@ -61,7 +61,7 @@ qdel_popen_mock = mock_popen("Killed")
 @mock.patch("subprocess.Popen", qdel_popen_mock)
 def test_kill():
     listener = mock.Mock()
-    queue = SGEQueue(listener, "", "", "name", "workdir")
+    queue = SGEQueue(listener, "", "", "", "name", "workdir")
     queue.kill([Task("task", "100", "running", "/home/task")])
 
     qdel_popen_mock.assert_called_once_with(["qdel", "100"])
