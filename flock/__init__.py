@@ -138,6 +138,13 @@ class JobListener(object):
 
 
 
+def guess_task_type(task_dir):
+    # heuristic that could easily go wrong.
+    if "scatter" in task_dir:
+        return "scatter"
+    if "gather" in task_dir:
+        return "gather"
+    return "normal"
 
 
 def dump_file(filename):
@@ -377,7 +384,7 @@ class Flock(object):
                 created_tasks = created_tasks[:maxsubmit_now]
 
             for task in created_tasks:
-                self.job_queue.submit(run_id, task.full_path, "scatter" in task.task_dir)
+                self.job_queue.submit(run_id, task.full_path, guess_task_type(task.task_dir))
 
             submitted_count += len(created_tasks)
             if len(created_tasks) == 0:
