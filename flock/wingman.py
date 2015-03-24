@@ -494,7 +494,7 @@ def main_loop(endpoint_url, flock_home, store, max_submitted, localQueue = False
         queue_factory = lambda listener, qsub_options, scatter_qsub_options, gather_qsub_options, name, workdir, required_mem_override: SGEQueue(listener, qsub_options, scatter_qsub_options, gather_qsub_options, name, workdir, required_mem_override)
 
     listener = wingman_client.ConsolidatedMonitor(endpoint_url, flock_home)
-    t_queue = queue_factory(None, None, None, "", "./", None)
+    t_queue = queue_factory(None, None, None, None, "", "./", None)
 
     last_check_for_missing = None
 
