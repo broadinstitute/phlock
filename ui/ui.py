@@ -119,7 +119,8 @@ def find_instances_in_cluster(ec2, cluster_name):
     return [i for i in instances if group_name in [g.name for g in i.groups]]
 
 
-def find_master(ec2, cluster_name):
+def find_master(ec2):
+    cluster_name = config['CLUSTER_NAME']
     instances = find_instances_in_cluster(ec2, cluster_name)
     matches = [i for i in instances if "Name" in i.tags and i.tags["Name"] == config["MASTER_NODE_NAME"]]
     if len(matches) == 0:
@@ -257,9 +258,15 @@ def index():
         cpus = cpus_per_instance[instance_type] * count
         open_spot_requests.append( (instance_type, status, price, count, cpus) )
 
+    master = find_master(ec2)
+    if master == None:
+        master_node_address = "No master node running"
+    else:
+        master_node_address = master.dns_name
+
     return flask.render_template("index.html", terminals=active_terminals, instances=instance_table, cluster_state=cluster_state,
                                  manager_state=manager_state,
-                                 hourly_rate=hourly_rate, open_spot_requests=open_spot_requests)
+                                 hourly_rate=hourly_rate, open_spot_requests=open_spot_requests, master_node_address=master_node_address)
 
 @app.route("/start-manager")
 @secured
@@ -350,7 +357,7 @@ def parse_reponse(fields, request_params, files):
 
 
 def get_master_info(ec2):
-    master = find_master(ec2, config['CLUSTER_NAME'])
+    master = find_master(ec2)
 
     return master, config['KEY_LOCATION']
 
