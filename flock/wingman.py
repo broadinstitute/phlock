@@ -474,7 +474,7 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted):
             required_mem_override = store.get_required_mem_override(run_id)
 
             config = flock_config.load_config([config_path], run_dir, {})
-            queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.name, config.workdir, required_mem_override)
+            queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.gather_qsub_options, config.name, config.workdir, required_mem_override)
             queue_cache[run_id] = queue
 
         queue = queue_cache[run_id]
@@ -489,9 +489,9 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted):
 def main_loop(endpoint_url, flock_home, store, max_submitted, localQueue = False):
 
     if localQueue:
-        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override: LocalBgQueue(listener, workdir)
+        queue_factory = lambda listener, qsub_options, scatter_qsub_options, gather_qsub_options, name, workdir, required_mem_override: LocalBgQueue(listener, workdir)
     else:
-        queue_factory = lambda listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override: SGEQueue(listener, qsub_options, scatter_qsub_options, name, workdir, required_mem_override)
+        queue_factory = lambda listener, qsub_options, scatter_qsub_options, gather_qsub_options, name, workdir, required_mem_override: SGEQueue(listener, qsub_options, scatter_qsub_options, gather_qsub_options, name, workdir, required_mem_override)
 
     listener = wingman_client.ConsolidatedMonitor(endpoint_url, flock_home)
     t_queue = queue_factory(None, None, None, "", "./", None)
