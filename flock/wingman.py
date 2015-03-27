@@ -468,18 +468,18 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted):
     log.info("Found %d READY tasks", len(tasks))
     queue_cache = {}
     for run_id, task_dir, group in tasks:
-        if not (run_id in queue_cache):
-            log.info("Creating queue missing from cache for %s", run_id)
-            run_dir, config_path = store.get_config_path(run_id)
-            required_mem_override = store.get_required_mem_override(run_id)
-
-            config = flock_config.load_config([config_path], run_dir, {})
-            queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.gather_qsub_options, config.name, config.workdir, required_mem_override)
-            queue_cache[run_id] = queue
-
-        queue = queue_cache[run_id]
-
         try:
+            if not (run_id in queue_cache):
+                log.info("Creating queue missing from cache for %s", run_id)
+                run_dir, config_path = store.get_config_path(run_id)
+                required_mem_override = store.get_required_mem_override(run_id)
+
+                config = flock_config.load_config([config_path], run_dir, {})
+                queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.gather_qsub_options, config.name, config.workdir, required_mem_override)
+                queue_cache[run_id] = queue
+
+            queue = queue_cache[run_id]
+
             queue.submit(run_id, os.path.join(run_dir, task_dir), flock.guess_task_type(task_dir))
         except:
             log.exception("Got exception submitting %s %s", run_dir, task_dir)
