@@ -406,9 +406,12 @@ def get_wingman_service():
 def get_jobs_from_remote():
     return get_wingman_service().get_runs()
 
+def get_run_files_path(run_name):
+    return config['TARGET_ROOT'] + "/" + run_name + "/files"
+
 @app.route("/run/<run_name>")
 def show_run(run_name):
-    run_dir = config['TARGET_ROOT'] + "/" + run_name + "/files"
+    run_dir = get_run_files_path(run_name)
     tasks = get_wingman_service().get_run_tasks(run_dir)
     def rewrite_task(t):
         t = dict(t)
@@ -423,7 +426,7 @@ def show_run(run_name):
 @app.route("/list-run-files/<run_name>/<path:file_path>")
 def list_run_files(run_name, file_path):
 
-    run_dir = config['TARGET_ROOT'] + "/" + run_name + "/files"
+    run_dir = get_run_files_path(run_name)
 
     if file_path == "":
         wildcard = "*"
@@ -442,7 +445,7 @@ def list_run_files(run_name, file_path):
 
 @app.route("/view-run-file/<run_name>/<path:file_path>")
 def view_run_file(run_name, file_path):
-    run_dir = config['TARGET_ROOT'] + "/" + run_name + "/files"
+    run_dir = get_run_files_path(run_name)
 
     service = get_wingman_service()
     files = service.get_run_files(run_dir, file_path)
@@ -575,6 +578,7 @@ def get_current_timestamp():
     return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
+
 def generate_run_command(flock_config, params):
     assert params["run_id"] != None
 
@@ -645,12 +649,14 @@ def submit_flock_job():
     cmd, title = generate_run_command(flock_config_str, {'run_id': timestamp})
     return run_command(cmd, title=title)
 
+def get_code_cache_dir(sha):
+    return config['TARGET_ROOT'] + "/code-cache/"+sha
 
 def deploy_code_from_git_command(repo, branch, sha):
     ec2 = get_ec2_connection()
     master, key_location = get_master_info(ec2)
 
-    sha_code_dir = config['TARGET_ROOT'] + "/code-cache/"+sha
+    sha_code_dir = get_code_cache_dir(sha)
 
     args = [config['PYTHON_EXE'], "-u", "deploy_from_git.py", master.dns_name, key_location, repo, branch, sha_code_dir]
     return args
