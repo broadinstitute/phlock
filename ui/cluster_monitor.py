@@ -8,17 +8,18 @@ import os
 import socket
 
 class Parameters:
-    def __init__(self):
+    def __init__(self, default_instance_type, ignore_grp):
         self.interval=30
         self.spot_bid=0.01
         self.max_to_add=1
         self.max_instances=10
         self.min_instances=1
-        self.instance_type="m1.small"
+        self.instance_type=default_instance_type
         self.dryrun=False
         self.log_file = None
-        self.job_wait_time = 300
-        self.stabilization_time = 180
+        self.job_wait_time = 60
+        self.stabilization_time = 60
+        self.ignore_grp = ignore_grp
 
     def get_total_spot_bid(self):
         cpus = cpus_per_instance[self.instance_type]
@@ -235,6 +236,8 @@ class ClusterManager(object):
                 "--instance-type", self.monitor_parameters.instance_type,
                 "--job_wait_time", str(self.monitor_parameters.job_wait_time),
                 "--stabilization_time", str(self.monitor_parameters.stabilization_time)]
+        if self.monitor_parameters.ignore_grp:
+            args.append("--ignore-grp")
         self.loadbalance_proc = self._run_starcluster_cmd(["loadbalance", self.cluster_name] + args, "loadbalance-exited")
 
     def _verify_ownership_of_cluster(self, steal_ownership=False):

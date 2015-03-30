@@ -71,6 +71,16 @@
         </div>
 
         <div class="form-group">
+            <label for="ignore_grp" class="col-sm-3 control-label">
+                Allow instances to be started in any zone
+            </label>
+
+            <div class="col-sm-3">
+                <input type="checkbox" class="form-control" id="ignore_grp" name="ignore_grp" {% if param.ignore_grp %} checked {% endif %}>
+            </div>
+        </div>
+
+        <div class="form-group">
             <div class="col-sm-offset-3 col-sm-10">
                 <button name="submit" type="submit" class="btn btn-default">Update</button>
             </div>
