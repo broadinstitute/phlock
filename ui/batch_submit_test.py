@@ -1,6 +1,6 @@
 __author__ = 'pmontgom'
 
-import ui
+import batch_submit
 
 def test_override_settings():
     config = """
@@ -17,7 +17,7 @@ qsub_options: -l h_vmem=2G -p -5
 invoke:|
   stopifnot(flock_version[1] == 1)
 """
-    final_config = ui.override_settings(config, {"workdir":"/home"})
+    final_config = batch_submit.override_settings(config, {"workdir":"/home"})
 
     assert final_config == """
 # config

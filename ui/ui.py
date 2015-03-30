@@ -363,9 +363,40 @@ def get_master_info(ec2):
 
 import adhoc
 
-CONFIGS = { "bulk": [ {"name":["bulk"], "targetDataset": ["ach2.12"], "targetDataType": ["gene solutions","GS t/h lv2","GS t/h lv3"], "celllineSubset": ["all","solid"],
-  "predictiveFeatureSubset": ["top100", "all", "single", "bydomain", "byseqparalog", "physicalinteractors"],
-  "predictiveFeatures": [ ["GE"], ["CN"], ["MUT"], ["GE", "CN", "MUT"] ] } ] }
+CONFIGS = { "bulk": [ 
+  # Putative Oncogene Addictions
+  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
+  "celllineSubset": ["all", "solid"],
+  "predictiveFeatureSubset": ["self"],
+  "fitSettings": ["default", "outlier"],
+  "predictiveFeatures": [ ["MUThot", "MUTmis", "CN"] ] },
+  # Gene Addictions  
+  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
+  "celllineSubset": ["all", "solid"],
+  "predictiveFeatureSubset": ["self"],
+  "fitSettings": ["default", "outlier"],
+  "predictiveFeatures": [ ["MUThot", "MUTmis", "CN", "GE"] ] },
+  # CYCLOPS
+  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
+  "celllineSubset": ["all", "solid"],
+  "predictiveFeatureSubset": ["self"],
+  "fitSettings": ["default", "outlier"],
+  "predictiveFeatures": [ ["MUThot", "MUTmis", "CN", "GE"] ] },
+  # SL - Functional Redundancy
+  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
+  "celllineSubset": ["all", "solid"],
+  "predictiveFeatureSubset": ["byseqparalog", "bydomain"],
+  "fitSettings": ["default", "outlier"],
+  "predictiveFeatures": [ ["MUTdmg", "MUTmis", "CN", "GE"] ] },
+  # SL - Common Pathway TBD
+  # SL - Physical Interactions
+  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
+  "celllineSubset": ["all", "solid"],
+  "predictiveFeatureSubset": ["physicalinteractors"],
+  "fitSettings": ["default", "outlier"],
+  "predictiveFeatures": [ ["MUT", "CN", "GE"] ] },
+  # related?
+  ] }
 
 import sshxmlrpc
 import threading
@@ -730,7 +761,7 @@ def submit_batch_job():
     else:
         raise Exception("invalid value for submit (%s)" % submit)
 
-monitor_parameters = cluster_monitor.Parameters()
+monitor_parameters = None
 cluster_terminal = None
 cluster_manager = None
 
@@ -753,6 +784,9 @@ def set_monitor_parameters():
     monitor_parameters.min_instances=int(values['min_instances'])
     monitor_parameters.job_wait_time = int(values['job_wait_time'])
     monitor_parameters.stabilization_time = int(values['stabilization_time'])
+    monitor_parameters.ignore_grp = "ignore_grp" in values
+
+    print "ignore_grp", monitor_parameters.ignore_grp
 
     return flask.redirect("/")
 
@@ -897,6 +931,9 @@ def internal_error(exception):
 def init_manager():
     global cluster_terminal
     global cluster_manager
+    global monitor_parameters
+
+    monitor_parameters = cluster_monitor.Parameters(config['INSTANCE_TYPE'], config['IGNORE_GRP'])
 
     log_file = None
 
@@ -930,7 +967,9 @@ if __name__ == "__main__":
                       PORT=9935,
                       FLOCK_PATH="/xchip/flock/bin/phlock",
                       LOADBALANCE_PID_FILE="loadbalance.pid",
-                      TARGET_ROOT = "/data2/runs")
+                      TARGET_ROOT = "/data2/runs",
+                      INSTANCE_TYPE = "r3.2xlarge",
+                      IGNORE_GRP = False)
     app.config.from_pyfile(args.config_path)
     load_starcluster_config(app.config)
 
