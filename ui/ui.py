@@ -363,40 +363,6 @@ def get_master_info(ec2):
 
 import adhoc
 
-CONFIGS = { "bulk": [ 
-  # Putative Oncogene Addictions
-  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
-  "celllineSubset": ["all", "solid"],
-  "predictiveFeatureSubset": ["self"],
-  "fitSettings": ["default", "outlier"],
-  "predictiveFeatures": [ ["MUThot", "MUTmis", "CN"] ] },
-  # Gene Addictions  
-  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
-  "celllineSubset": ["all", "solid"],
-  "predictiveFeatureSubset": ["self"],
-  "fitSettings": ["default", "outlier"],
-  "predictiveFeatures": [ ["MUThot", "MUTmis", "CN", "GE"] ] },
-  # CYCLOPS
-  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
-  "celllineSubset": ["all", "solid"],
-  "predictiveFeatureSubset": ["self"],
-  "fitSettings": ["default", "outlier"],
-  "predictiveFeatures": [ ["MUThot", "MUTmis", "CN", "GE"] ] },
-  # SL - Functional Redundancy
-  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
-  "celllineSubset": ["all", "solid"],
-  "predictiveFeatureSubset": ["byseqparalog", "bydomain"],
-  "fitSettings": ["default", "outlier"],
-  "predictiveFeatures": [ ["MUTdmg", "MUTmis", "CN", "GE"] ] },
-  # SL - Common Pathway TBD
-  # SL - Physical Interactions
-  {"targetDataset": ["ach2.16", "ach2.16-nomask"], 
-  "celllineSubset": ["all", "solid"],
-  "predictiveFeatureSubset": ["physicalinteractors"],
-  "fitSettings": ["default", "outlier"],
-  "predictiveFeatures": [ ["MUT", "CN", "GE"] ] },
-  # related?
-  ] }
 
 import sshxmlrpc
 import threading
@@ -502,8 +468,29 @@ def view_run_file(run_name, file_path):
 
     return flask.Response(stream_file(), mimetype=mimetype)
 
+cached_projections = None
+cached_projections_mtime = None
+
+def load_projections():
+    global cached_projections, cached_projections_mtime
+    if not ("PROJECTIONS_PATH" in config):
+      return {}
+    
+    projections_path = config["PROJECTIONS_PATH"]
+    mtime = os.path.getmtime(projections_path)
+    
+    if cached_projections_mtime != mtime:
+      fd = open(projections_path)
+      cached_projections = eval(fd.read())
+      cached_projections_mtime = mtime
+    
+    return cached_projections
+    
+
 @app.route("/job-dashboard")
 def job_dashboard():
+    projections = load_projections()
+
     filter_tags = request.values.getlist("tag")
     config_name = request.values.get("config_name")
 
@@ -513,7 +500,7 @@ def job_dashboard():
         config = None
         config_name = ""
     else:
-        config = CONFIGS[config_name]
+        config = projections[config_name]
 
     if config != None:
         # compute set of all columns used to define a unique job
@@ -523,7 +510,7 @@ def job_dashboard():
 
         all_configs = adhoc.enumerate_configurations(config)
         existing_jobs_parameters = [x['parameters'] for x in existing_jobs]
-        existing_jobs_status = dict([ (x['parameters']['run_id'], x['status'])])
+        existing_jobs_status = dict([ (x['parameters']['run_id'], x['status']) for x in existing_jobs])
         merged = adhoc.find_each_in_a(config_property_names, all_configs, existing_jobs_parameters)
         flattened = adhoc.flatten(merged, existing_jobs_status)
     else:
@@ -542,7 +529,7 @@ def job_dashboard():
     return flask.render_template("job-dashboard.html", jobs=flattened,
                                  column_names=column_names, tags=tag_universe,
                                  fixed_values=fixed_values.items(), current_filter_tags=filter_tags,
-                                 config_name=config_name, config_names=CONFIGS.keys())
+                                 config_name=config_name, config_names=projections.keys())
 
 job_pattern = re.compile("\\d+-\\d+")
 

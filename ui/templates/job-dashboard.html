@@ -200,6 +200,7 @@
         {% endfor %}
         </tbody>
     </table>
+    <p>{{ jobs|length }} jobs shown</p>
 
     <!-- hidden form for retry jobs -->
     <form action="/retry-jobs" method="POST" id="retry-jobs-form">

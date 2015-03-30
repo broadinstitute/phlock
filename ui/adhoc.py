@@ -62,7 +62,7 @@ def find_each_in_a(columns, values_a, values_b):
     items = idx_a.items()
     items.sort()
     for k, a in items:
-        assert len(a) == 1
+        assert len(a) == 1, "found multiple items %r with key %r" % (a, k)
         a = a[0]
         rows.append((k, a, idx_b[k]))
     assert len(idx_a) == len(values_a)
