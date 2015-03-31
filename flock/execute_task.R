@@ -23,4 +23,8 @@ source(flock_script_name);
 fileConn<-file(flock_completion_file)
 writeLines(format(Sys.time(), "%a %b %d %X %Y"), fileConn)
 close(fileConn)
-stopifnot(file.info(flock_completion_file)$size > 0)
+if(file.info(flock_completion_file)$size <= 0) {
+  unlink(flock_completion_file)
+  stop("Filesystem filled up?")
+}
+
