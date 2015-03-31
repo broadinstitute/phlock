@@ -12,7 +12,7 @@ setup(
     entry_points={'console_scripts': [
         "phlock = flock.main:main",
         "phlock-wingman = flock.wingman:main",
-#        "phlock-wingman-notify = flock.wingman_notify:main"
+        "phlock-wingman-sync = flock.wingman_sync:main"
         ]},
     package_data={'flock': ['*.R']}
 )

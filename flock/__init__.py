@@ -79,10 +79,10 @@ def read_task_dirs(run_id):
 def finished_successfully(run_id, task_dir):
     if run_id != None:
         task_dir = os.path.join(run_id, task_dir)
-    finished = os.path.exists(os.path.join(task_dir, "finished-time.txt"))
+        finished_breadcrumb = os.path.join(task_dir, "finished-time.txt")
+    finished = os.path.exists(finished_breadcrumb) and os.path.getsize(finished_breadcrumb) > 0
+
     return finished
-
-
 
 
 @timeit
