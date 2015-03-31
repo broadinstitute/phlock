@@ -22,10 +22,9 @@ def main():
     with store.transaction() as db:
         db.execute("SELECT task_dir FROM TASKS WHERE status = ?", [wingman.COMPLETED])
         for task_dir, status in db.fetchall():
-            if flock.finished_successfully(None, task_dir):
-                status = wingman.COMPLETED
-            else:
-                status = wingman.MISSING
+            if not flock.finished_successfully(None, task_dir):
+                log.info("missing %s", task_dir)
+                store.set_task_status(task_dir, wingman.MISSING)
 
 if __name__ == "__main__":
     main()
