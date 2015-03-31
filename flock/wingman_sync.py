@@ -20,7 +20,7 @@ def main():
 
     store = wingman.TaskStore(db, flock_home=None, endpoint_url=None)
     with store.transaction() as db:
-        db.execute("SELECT task_dir FROM TASKS WHERE status = ?", [wingman.COMPLETED])
+        db.execute("SELECT task_dir, status FROM TASKS WHERE status = ?", [wingman.COMPLETED])
         for task_dir, status in db.fetchall():
             if not flock.finished_successfully(None, task_dir):
                 log.info("missing %s", task_dir)
