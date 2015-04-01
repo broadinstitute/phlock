@@ -47,7 +47,7 @@ def deploy_code_from_git(code_dir, repo, sha, branch):
 
     return sha_code_dir
 
-def install_config(target_root, config_temp_file, timestamp):
+def install_config(target_root, config_temp_file, config_json_temp_file, timestamp):
     target_dir = target_root+"/"+timestamp
 
     # create the directory for this run
@@ -56,6 +56,7 @@ def install_config(target_root, config_temp_file, timestamp):
     # upload the config file and run via flock, after setting the working directory to be the current code dir
     remote_config = target_dir+"/config"
     put(config_temp_file, remote_config)
+    put(config_json_temp_file, remote_config+".json")
 
     return target_dir, remote_config
 
@@ -88,7 +89,7 @@ class EchoAndCapture(object):
 def transfer_config_and_submit(host, key_filename, config_file, runs_dir, json_params, timestamp):
     params = json.loads(open(json_params).read())
     with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
-        target_dir, remote_config = install_config(runs_dir, config_file, timestamp)
+        target_dir, remote_config = install_config(runs_dir, config_file, json_params, timestamp)
     submit_to_wingman(host, key_filename, target_dir, timestamp, remote_config, params)
 
 def submit_to_wingman(host, key_filename, target_dir, timestamp, remote_config, params):
@@ -106,7 +107,7 @@ def deploy(host, key_filename, repo, branch, config_file, target_root, json_para
 
     with settings(host_string=host, key_filename=key_filename, user="ubuntu"):
         working_dir = sha_code_dir
-        target_dir, remote_config = install_config(target_root, config_file, timestamp)
+        target_dir, remote_config = install_config(target_root, config_file, json_params, timestamp)
 
         put(json_params, target_dir+"/config.json")
         with cd(working_dir):
