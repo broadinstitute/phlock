@@ -46,16 +46,18 @@ KILLED = -3
 KILL_PENDING = -4
 KILL_SUBMITTED = -5
 PREREQ_FAILED = -6
+QUOTA_EXCEEDED = -7
 
 # classes of states:
 #   successful completion: COMPLETED
-#   failed completion: KILLED, PREREQ_FAILED, FAILED
+#   failed completion: KILLED, PREREQ_FAILED, FAILED, QUOTA_EXCEEDED
 #   waiting: WAITING
 #   in-progress: READY, SUBMITTED, STARTED, MISSING, KILL_PENDING, KILL_SUBMITTED
 
 status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED", STARTED: "STARTED",
                        COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING", KILLED: "KILLED",
-                       KILL_PENDING : "KILL_PENDING", KILL_SUBMITTED: "KILL_SUBMITTED", PREREQ_FAILED: "PREREQ_FAILED"}
+                       KILL_PENDING : "KILL_PENDING", KILL_SUBMITTED: "KILL_SUBMITTED", PREREQ_FAILED: "PREREQ_FAILED",
+                       QUOTA_EXCEEDED: "QUOTA_EXCEEDED"}
 
 MONITOR_POLL_INTERVAL = 60
 def format_watch_command(flock_home, log_file):
@@ -299,7 +301,7 @@ class TaskStore:
             if len(rows) == 1:
                 run_id = rows[0][0]
                 # treating MISSING as the same as FAILED.  Perhaps there should be something that transforms MISSING tasks to FAILED after some timeout
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?, ?, ?)", [WAITING, run_id, FAILED, KILLED, MISSING, PREREQ_FAILED])
+                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?, ?, ?, ?)", [WAITING, run_id, FAILED, KILLED, MISSING, PREREQ_FAILED, QUOTA_EXCEEDED])
         return True
 
     def kill_run(self, run_dir):
@@ -357,7 +359,7 @@ class TaskStore:
                 record = result[number]
                 if status in [COMPLETED]:
                     record[0] += 1
-                elif status in [KILLED, FAILED, PREREQ_FAILED]:
+                elif status in [KILLED, FAILED, PREREQ_FAILED, QUOTA_EXCEEDED]:
                     record[1] += 1
                 elif status in [WAITING]:
                     record[3] += 1
@@ -458,6 +460,7 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted):
         if prereq_failed:
             store.set_task_status(task_dir, PREREQ_FAILED)
         elif prereq_finished:
+            log.info("Transitioning %s to READY. [counts_by_group=%s]", task_dir, counts_by_group)
             store.set_task_status(task_dir, READY)
         else:
             log.debug("Could not run %s because needs to wait for another job", task_dir)
