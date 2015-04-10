@@ -16,6 +16,7 @@ import glob
 import base64
 import hashlib
 import collections
+import wingman_sge_stat
 
 log = logging.getLogger("monitor")
 
@@ -562,6 +563,7 @@ def main():
                    "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override",
                    "get_run_tasks", "get_run"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
+    server.register_function(make_function_wrapper(wingman_sge_stat.get_host_summary), "get_host_summary")
 
     server.serve_forever()
 
