@@ -25,10 +25,10 @@ def reformat(qhost_output, qstat_output):
         jobs_in_queue += 1
 
         #is_running = job.attrib["state"] == "running"
-        queue_el = job.get("queue_name")
+        queue_el = job.find("queue_name")
         if queue_el != None:
             queue_name = queue_el.text
-            if queue_name != "":
+            if queue_name != "" and queue_name != None:
                 queue, host = queue_name.split("@")
                 jobs_by_host[host] += 1
 
@@ -62,6 +62,7 @@ def reformat(qhost_output, qstat_output):
 
         host_values["name"] = host_name
         host_values["jobs"] = jobs_by_host[host_name]
+        #del jobs_by_host[host_name]
 
         hosts.append( host_values )
 

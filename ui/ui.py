@@ -34,7 +34,7 @@ oid = OpenID(None, "/tmp/clusterui-openid")
 terminal_manager = term.TerminalManager()
 log = logging.getLogger("ui")
 
-# from werkzeug.local import LocalProxy
+from werkzeug.local import LocalProxy
 def _get_current_config():
     return flask.current_app.config
 
@@ -387,7 +387,7 @@ def get_wingman_service_factory():
         client_methods = set(["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run",
                               "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                               "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs",
-                              "set_required_mem_override", "get_run_tasks"])
+                              "set_required_mem_override", "get_run_tasks", "get_host_summary"])
         return sshxmlrpc.SshXmlServiceProxy(master_dns_name, "ubuntu", key_location, 3010, client_methods)
 
     return factory
@@ -596,7 +596,6 @@ def get_current_timestamp():
     return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
-
 def generate_run_command(flock_config, params):
     assert params["run_id"] != None
 
@@ -789,6 +788,12 @@ def start_tunnel():
 def test_run():
     return run_command(["bash", "-c", "while true ; do echo line ; sleep 1 ; date ; done"])
 
+@app.route("/show-sge-state")
+def show_sge_state():
+    service = get_wingman_service()
+    state = service.get_host_summary()
+    return flask.render_template("show-sge-state.html", **state)
+
 @app.route("/show-instances")
 def show_instances():
     ec2 = get_ec2_connection()
@@ -929,9 +934,6 @@ def init_manager():
     if "MONITOR_LOG" in config:
         log_file = open(config["MONITOR_LOG"], "a")
 
-    if "MONITOR_JSON_LOG" in config:
-        monitor_parameters.log_file = config["MONITOR_JSON_LOG"]
-
     cluster_terminal = terminal_manager.start_named_terminal("Cluster monitor", log_file=log_file)
     instance_id = "host=%s, pid=%d" % (socket.getfqdn(), os.getpid())
     cluster_manager = cluster_monitor.ClusterManager(monitor_parameters,
@@ -943,7 +945,8 @@ def init_manager():
                                                      get_ec2_connection(),
                                                      config['LOADBALANCE_PID_FILE'],
                                                      get_sdbc_connection(),
-                                                     get_wingman_service_factory())
+                                                     get_wingman_service_factory(),
+                                                     config["MONITOR_JSON_LOG"])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Start webserver for cluster ui')
@@ -958,7 +961,8 @@ if __name__ == "__main__":
                       LOADBALANCE_PID_FILE="loadbalance.pid",
                       TARGET_ROOT = "/data2/runs",
                       INSTANCE_TYPE = "r3.2xlarge",
-                      IGNORE_GRP = False)
+                      IGNORE_GRP = False,
+                      MONITOR_JSON_LOG="monitor-log.json")
     app.config.from_pyfile(args.config_path)
     load_starcluster_config(app.config)
 

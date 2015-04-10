@@ -1,5 +1,7 @@
 import subprocess
 import time
+import json
+import collections
 import threading
 import traceback
 from instance_types import cpus_per_instance
@@ -105,7 +107,7 @@ class Mailbox(object):
         self.cv.release()
 
 class ClusterManager(object):
-    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file, sdbc, wingman_service_factory):
+    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file, sdbc, wingman_service_factory, state_log_path):
         super(ClusterManager, self).__init__()
         self.manager_state = CM_STOPPED
         self.requested_stop = False
@@ -126,6 +128,7 @@ class ClusterManager(object):
         self.sdbc = sdbc
         self.restart_times = []
         self.wingman_service_factory = wingman_service_factory
+        self.state_log_path =state_log_path
 
     def start_manager(self):
         # make sure we don't try to have two running manager threads
@@ -311,8 +314,48 @@ class ClusterManager(object):
         self._verify_ownership_of_cluster(steal_ownership=self.first_update)
         self.first_update = False
 
-        print "checking terminated nodes"
+        log.debug("checking terminated nodes")
         self._update_terminated_nodes()
+
+        log.debug("Take cluster state snapshot")
+        self._log_cluster_state()
+
+    def _log_cluster_state(self):
+        import ui
+
+        instances = ui.find_instances_in_cluster(self.ec2, self.cluster_name)
+        hosts_by_type = collections.defaultdict(lambda: 0)
+        for instance in instances:
+            hosts_by_type[instance.instance_type] += 1
+
+        spot_reqs = self.ec2.get_all_spot_instance_requests(filters={"state":"open"})
+        reqs_by_type = collections.defaultdict(lambda: 0)
+        for spot_req in spot_reqs:
+            reqs_by_type[spot_req.type] += 1
+
+        wingman_service = self.wingman_service_factory()
+        host_summary = wingman_service.get_host_summary()
+
+        running_jobs = 0
+        for host in host_summary["hosts"]:
+            running_jobs += host["jobs"]
+
+        state = dict(timestamp = time.time(),
+             jobs_in_queue = host_summary["jobs_in_queue"],
+             running_jobs = running_jobs,
+             running_hosts = hosts_by_type.items(),
+             requested_hosts = reqs_by_type.items())
+
+        fd = open(self.state_log_path, "a")
+        fd.write(json.dumps(state)+"\n")
+        fd.close()
+
+    def get_cluster_state_log(self):
+        recs = []
+        with open(self.state_log_path, "r") as fd:
+            for line in fd.readline():
+                recs.append(json.loads(line))
+        return recs
 
     def start_cluster(self):
         self.terminal.write("Starting cluster...\n")
@@ -321,3 +364,4 @@ class ClusterManager(object):
     def stop_cluster(self):
         self.terminal.write("Stopping cluster...\n")
         self._run_starcluster_cmd(["terminate", "-c", "-f", self.cluster_name], None, completion_callback=lambda: self.terminal.write("Cluster stopped\n"))
+
