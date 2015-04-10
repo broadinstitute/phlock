@@ -771,6 +771,8 @@ def set_monitor_parameters():
     monitor_parameters.min_instances=int(values['min_instances'])
     monitor_parameters.job_wait_time = int(values['job_wait_time'])
     monitor_parameters.stabilization_time = int(values['stabilization_time'])
+    monitor_parameters.reserve_node_timeout = int(values["reserve_node_timeout"])
+    monitor_parameters.reserve_nodes = int(values["reserve_nodes"])
     monitor_parameters.ignore_grp = "ignore_grp" in values
 
     print "ignore_grp", monitor_parameters.ignore_grp

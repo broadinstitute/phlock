@@ -20,6 +20,8 @@ class Parameters:
         self.job_wait_time = 60
         self.stabilization_time = 60
         self.ignore_grp = ignore_grp
+        self.reserve_node_timeout = 60
+        self.reserve_nodes = 1
 
     def get_total_spot_bid(self):
         cpus = cpus_per_instance[self.instance_type]
@@ -235,7 +237,9 @@ class ClusterManager(object):
                 "--min_nodes", str(self.monitor_parameters.min_instances),
                 "--instance-type", self.monitor_parameters.instance_type,
                 "--job_wait_time", str(self.monitor_parameters.job_wait_time),
-                "--stabilization_time", str(self.monitor_parameters.stabilization_time)]
+                "--stabilization_time", str(self.monitor_parameters.stabilization_time),
+                "--reserve_node_timeout", str(self.monitor_parameters.reserve_node_timeout),
+                "--reserve_nodes", str(self.monitor_parameters.reserve_nodes)]
         if self.monitor_parameters.ignore_grp:
             args.append("--ignore-grp")
         self.loadbalance_proc = self._run_starcluster_cmd(["loadbalance", self.cluster_name] + args, "loadbalance-exited")

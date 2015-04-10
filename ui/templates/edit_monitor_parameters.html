@@ -71,6 +71,29 @@
         </div>
 
         <div class="form-group">
+            <label for="reserve_nodes" class="col-sm-3 control-label">
+                Number of nodes to keep on reserve
+            </label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="reserve_nodes" name="reserve_nodes"
+                       value="{{ param.reserve_nodes }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="reserve_node_timeout" class="col-sm-3 control-label">
+                Number of minutes of idle time before shutting down reserved nodes
+            </label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="reserve_node_timeout" name="reserve_node_timeout"
+                       value="{{ param.reserve_node_timeout }}">
+            </div>
+        </div>
+
+
+        <div class="form-group">
             <label for="ignore_grp" class="col-sm-3 control-label">
                 Allow instances to be started in any zone
             </label>
