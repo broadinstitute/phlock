@@ -4,151 +4,49 @@
 
 {% block content %}
 
-  <h1>Active instances</h1>
+  <h1>Jobs in queue: {{ jobs_in_queue }}</h1>
 
-    <button id="kill-instances-button" class="btn">Kill</button>
 
-  <table class="table" id="active_instances">
+  <table class="table">
     <thead>
       <tr>
         <th>
-            <input type="checkbox" id="select-all-instances">
+          Name
+        </th>
+
+          <th>
+              Num Procs
+          </th>
+        <th>
+          Load Avg
         </th>
 
         <th>
-          ID
+            Jobs
         </th>
 
         <th>
-          instance type
-        </th>
-
-        <th>
-            Tags
+            % memory used
         </th>
       </tr>
     </thead>
+
     <tbody>
-      {% for i in instances %}
-      <tr>
-        <td>
-            <input type="checkbox" name="instance-id" value="{{ i.id }}" class="instance-selection">
-        </td>
-        <td>
-          {{ i.id }}
-        </td>
-        <td>
-          {{ i.instance_type }}
-        </td>
-        <td>
-          {{ i.tags }}
-        </td>
-      </tr>
+      {% for host in hosts %}
+        <tr>
+            <td>{{ host.name }}</td>
+            <td>{{ host.num_proc }}</td>
+            <td>{{ host.load_avg }}</td>
+            <td>{{ host.jobs }}</td>
+            <td>
+                {% if host.mem_used and host.mem_total %}
+                {{ "%.1f%%" % (100 * host.mem_used / host.mem_total) }}
+                {% endif %}
+            </td>
+        </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <form action="/kill-instances" id="kill-instances-form"  style="display: none">
-    <select id="kill-instance-ids" name="id"></select>
-  </form>
-
-  <form action="/kill-spots" id="kill-spots-form" style="display: none">
-    <select id="kill-spot-ids" name="id"></select>
-  </form>
-
-    <h1>Open spot requests</h1>
-    <button id="kill-spots-button" class="btn">Kill</button>
-    <table class="table" id="spot_instances">
-    <thead>
-      <tr>
-        <th>
-            <input type="checkbox" id="select-all-spots">
-        </th>
-
-        <th>
-          ID
-        </th>
-
-        <th>
-          instance type
-        </th>
-
-        <th>
-            Price
-        </th>
-
-          <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for s in spots %}
-      <tr>
-        <td>
-            <input type="checkbox" name="instance-id" value="{{ s.id }}" class="spot-selection">
-        </td>
-        <td>
-          {{ s.id }}
-        </td>
-        <td>
-          {{ s.launch_specification.instance_type }}
-        </td>
-        <td>
-          {{ s.price }}
-        </td>
-        <td>
-          {{ s.status.code }}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-{% endblock %}
-
-
-{% block scripts %}
-    {{ super() }}
-
-    <script>
-        $(function () {
-            $("#active_instances").dataTable({
-                "bPaginate": false
-             });
-             $("#spot_instances").dataTable({
-                "bPaginate": false
-             });
-            // install select-all handler on checkbox
-            $("#select-all-instances").on("click", function () {
-                var isChecked = $(this).is(":checked")
-                $(".instance-selection").prop("checked", isChecked)
-            });
-
-            $("#select-all-spots").on("click", function () {
-                var isChecked = $(this).is(":checked")
-                $(".spot-selection").prop("checked", isChecked)
-            });
-
-            var updateSelection = function (checkboxClass, selectId) {
-                var optionsHtml = [];
-                $("."+checkboxClass).each(function () {
-                    if ($(this).is(":checked")) {
-                        var v = this.value;
-                        optionsHtml.push("<option value='"+v+"'></option>");
-                    }
-                });
-                $("#"+selectId).html(optionsHtml.join())
-            }
-
-            $("#kill-instances-button").on("click", function() {
-                updateSelection("instance-selection", "kill-instance-ids");
-                $("#kill-instances-form").submit();
-            });
-
-            $("#kill-spots-button").on("click", function() {
-                updateSelection("spot-selection", "kill-spot-ids");
-                $("#kill-spots-form").submit();
-            });
-        });
-    </script>
 {% endblock %}
 
