@@ -4,6 +4,7 @@ import time
 import os
 import subprocess
 import signal
+import resource
 
 Stats = collections.namedtuple("Stats", ["timestamp", "utime", "stime", "starttime", "vsize", "rss"])
 
@@ -51,15 +52,26 @@ def adjust_omm_score(pid):
   except IOError:
     pass
 
-def run_and_watch(log_file, args, delay_between_checks=10):
+def run_and_watch(log_file, args, delay_between_checks=10, reserve_size=50*1024*1024):
   if os.path.exists(log_file):
     fd = open(log_file, "a")
   else:
     fd = open(log_file, "w")
     fd.write("state timestamp utime stime vsizeMB rssMB\n")
     fd.flush()
-    
-  proc = subprocess.Popen(args, close_fds=True)
+  
+  # reserve some amount of memory for this process by shrinking memory limit for child process
+  vsize_hard, vsize_soft = resource.getrlimit(resource.RLIMIT_AS)
+  if vsize_hard != resource.RLIM_INFINITY:
+    assert vsize_hard > reserve_size
+    vsize_hard -= reserve_size
+  if vsize_soft != resource.RLIM_INFINITY:
+    assert vsize_soft > reserve_size
+    vsize_soft -= reserve_size
+  def update_mem_limit():
+    resource.setrlimit(resource.RLIMIT_AS, (vsize_hard, vsize_soft))
+  
+  proc = subprocess.Popen(args, close_fds=True, preexec_fn=update_mem_limit)
   adjust_omm_score(proc.pid)
   
   def _timeout(x, y): raise Timeout()
