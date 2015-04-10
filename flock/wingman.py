@@ -289,7 +289,7 @@ class TaskStore:
 
     def node_disappeared(self, node_name):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE node_name = ? and status = ?", [WAITING, node_name, STARTED])
+            db.execute("UPDATE TASKS SET status = ? WHERE node_name = ? and status in (?, ?)", [WAITING, node_name, STARTED, MISSING])
         return True
 
     def retry_run(self, run_dir):
