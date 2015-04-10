@@ -6,6 +6,8 @@ from instance_types import cpus_per_instance
 import term
 import os
 import socket
+import logging
+log = logging.getLogger("ui")
 
 class Parameters:
     def __init__(self, default_instance_type, ignore_grp):
@@ -79,7 +81,7 @@ class Mailbox(object):
 
             if timer != None:
                 time_remaining = timer.time_remaining
-                print "Time remaining %s" % time_remaining
+                log.debug("Time remaining %s",time_remaining)
                 if time_remaining > 0:
                     self.cv.wait(time_remaining)
                 else:
@@ -91,7 +93,7 @@ class Mailbox(object):
         return result
 
     def send(self, message):
-        print "sending %s" % repr(message)
+        log.info("sending %s",repr(message))
         self.cv.acquire()
         self.queue.append(message)
         self.cv.notify_all()
@@ -141,9 +143,9 @@ class ClusterManager(object):
         self.mailbox.send("stop-manager")
 
     def _wait_for(self, messages, timeout=None):
-        print "Waiting for %s" % repr(messages)
+        log.debug("Waiting for %s", repr(messages))
         msg = self.mailbox.wait_for(messages, timeout=timeout)
-        print "Got %s" % repr(msg)
+        log.debug("Got %s", repr(msg))
         return msg
 
     def _main_loop(self):
@@ -181,7 +183,7 @@ class ClusterManager(object):
         except:
             exception_message = traceback.format_exc()
 
-            print(exception_message)
+            log.exception("Got exception in run()")
             self.terminal.write(exception_message)
             self._kill_loadbalance_proc()
 
@@ -192,7 +194,7 @@ class ClusterManager(object):
         return self.manager_state
 
     def _run_cmd(self, args, post_execute_msg, completion_callback=None):
-        print "executing %s" % args
+        log.info("executing %s", args)
         p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True)
         mp = term.ManagedProcess(p, p.stdout, self.terminal)
         completion = mp.start_thread()
@@ -282,7 +284,7 @@ class ClusterManager(object):
                 newly_terminated_ids.add(instance.id)
 
         wingman_service = self.wingman_service_factory()
-        print "Terminated nodes: %s, new: %s" % (terminated_instances, newly_terminated_aliases)
+        log.info("Terminated nodes: %s, new: %s", terminated_instances, newly_terminated_aliases)
         for alias in newly_terminated_aliases:
             wingman_service.node_disappeared(alias)
 
@@ -305,7 +307,7 @@ class ClusterManager(object):
                 # only if the loadbalancer has been up for > 5 minutes do we really think its running
                 self._send_heartbeat()
 
-        print "verifing ownership"
+        log.debug("verifing ownership")
         self._verify_ownership_of_cluster(steal_ownership=self.first_update)
         self.first_update = False
 

@@ -2,7 +2,6 @@ import datetime
 import flask
 from flask import request
 import subprocess
-import functools
 import tempfile
 import re
 import term
@@ -33,8 +32,9 @@ import base64
 
 oid = OpenID(None, "/tmp/clusterui-openid")
 terminal_manager = term.TerminalManager()
+log = logging.getLogger("ui")
 
-from werkzeug.local import LocalProxy
+# from werkzeug.local import LocalProxy
 def _get_current_config():
     return flask.current_app.config
 
