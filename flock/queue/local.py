@@ -14,7 +14,6 @@ class LocalBgQueue(AbstractQueue):
         self.external_id_prefix = "PID:"
 
     def get_jobs_from_external_queue(self):
-
         cmd = ["ps", "-o", "pid", "-u", getpass.getuser()]
         log.info("executing: %s", cmd)
         handle = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -74,6 +73,7 @@ class LocalQueue(AbstractQueue):
         self.system(cmd, ignore_retcode=True)
         self._extern_ids[task_full_path] = str(len(self._extern_ids))
         self._ran.add(cmd)
+        self.listener.task_submitted(d, "%s:%d" % (self.external_id_prefix, len(self._ran)) )
 
     def kill(self, task):
         raise Exception("not implemented")
