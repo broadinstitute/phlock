@@ -128,7 +128,7 @@ class AddDeadmansSwitchCrontab(ClusterSetup):
     self.setup_crontab(master, [node])
 
 class InstallWingmanService(ClusterSetup):
-  def __init__(self, flock_home, run_dir):
+  def __init__(self, flock_home="/data2/flock", run_dir="/data2/runs"):
     self.flock_home = flock_home
     self.run_dir = run_dir
   
