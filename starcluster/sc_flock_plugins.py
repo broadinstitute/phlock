@@ -145,6 +145,6 @@ exec ${flock_home}/bin/phlock-wingman sge ${run_dir}/jobdb.sqlite3 3010 --maxsub
     wingman_conf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wingman.conf")
     master.ssh.put(wingman_conf_path, "/etc/init/wingman.conf")
     master.ssh.put(temp_wingman_script.name, "/tmp/cluster_scripts/start_wingman.sh")
-    master.ssh.execute("chmod o+xr /tmp/cluster_scripts/start_wingman.sh")
+    master.ssh.execute("chmod ugo+xr /tmp/cluster_scripts/start_wingman.sh")
     master.ssh.execute("start wingman")
   
