@@ -29,7 +29,7 @@ DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id INTEGER, task_dir STRING prima
  "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
  "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
  "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)",
- "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING, required_mem_override INTEGER)",
+ "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING, added_tags STRING, required_mem_override INTEGER)",
  "CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)"]
 
 # Make run_id auto inc primary key
@@ -102,6 +102,20 @@ class TaskStore:
         if new_db:
             for statement in DB_INIT_STATEMENTS:
                 self._db.execute(statement)
+        else:
+            # figure out if we need to add new column.  Maybe worth adding version to DB and proper schema upgrade.
+            self._db.execute("PRAGMA table_info(RUNS)")
+            has_added_tags = False
+            for row in self._db:
+                if row['name'] == 'added_tags':
+                    has_added_tags = True
+            if not has_added_tags:
+                self._db.execute("CREATE TABLE NEW_RUNS_20150505 (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING, added_tags STRING, required_mem_override INTEGER)")
+                self._db.execute("INSERT INTO NEW_RUNS_20150505 (run_id, run_dir, name, flock_config_path, parameters, required_mem_override) select run_id, run_dir, name, flock_config_path, parameters, required_mem_override FROM RUNS")
+                self._db.execute("ALTER TABLE RUNS RENAME TO RUNS")
+                self._db.execute("ALTER TABLE NEW_RUNS_20150505 RENAME TO OLD_RUNS_20150505")
+                self._db.execute("DROP INDEX IDX_RUN_DIR")
+                self._db.execute("CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)")
 
     # serialize all access to db via transaction
     def transaction(self):
@@ -123,11 +137,29 @@ class TaskStore:
 
     def get_run(self, name):
         with self.transaction() as db:
-            db.execute("SELECT run_dir, name, parameters FROM RUNS WHERE name = ?", [name])
+            db.execute("SELECT run_dir, name, parameters, added_tags FROM RUNS WHERE name = ?", [name])
             rows = db.fetchall()
             assert len(rows) == 1
-            run_dir, name, parameters = rows[0]
-            return dict(run_dir=run_dir, name=name, parameters=parameters)
+            run_dir, name, parameters, added_tags = rows[0]
+            return dict(run_dir=run_dir, name=name, parameters=parameters, added_tags=added_tags)
+
+    def set_tag(self, name, property, value):
+        with self.transaction() as db:
+            db.execute("SELECT added_tags FROM RUNS WHERE name = ?", [name])
+            rows = db.fetchall()
+            assert len(rows) == 1
+            added_tags_json = rows[0]
+
+            if added_tags_json == "" or added_tags_json == None:
+                added_tags = {}
+            else:
+                added_tags = json.loads(added_tags_json)
+
+            added_tags[property] = value
+            added_tags_json = json.dumps(added_tags)
+
+            db.execute("UPDATE RUNS SET added_tags = ? WHERE name = ?", [added_tags_json, name])
+            return True
 
     def get_runs(self):
         with self.transaction() as db:
@@ -561,7 +593,7 @@ def main():
     print "Listening on port %d..." % port
     for method in ["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                    "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override",
-                   "get_run_tasks", "get_run"]:
+                   "get_run_tasks", "get_run", "set_tag"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
     server.register_function(make_function_wrapper(wingman_sge_stat.get_host_summary), "get_host_summary")
 
