@@ -17,20 +17,11 @@ import base64
 import hashlib
 import collections
 import wingman_sge_stat
+import shutil
 
 log = logging.getLogger("monitor")
 
 __author__ = 'pmontgom'
-
-# schema: SGE job number, job directory, try count, status = STARTED | FAILED | SUCCESS
-
-DB_INIT_STATEMENTS = ["CREATE TABLE TASKS (run_id INTEGER, task_dir STRING primary key, status INTEGER, try_count INTEGER, node_name STRING, external_id STRING, group_number INTEGER )",
- "CREATE INDEX IDX_RUN_ID ON TASKS (run_id)",
- "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
- "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
- "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)",
- "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING, added_tags STRING, required_mem_override INTEGER)",
- "CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)"]
 
 # Make run_id auto inc primary key
 # Make task_dir into primary key
@@ -59,6 +50,84 @@ status_code_to_name = {WAITING: "WAITING", READY:"READY", SUBMITTED: "SUBMITTED"
                        COMPLETED: "COMPLETED", FAILED: "FAILED", MISSING: "MISSING", KILLED: "KILLED",
                        KILL_PENDING : "KILL_PENDING", KILL_SUBMITTED: "KILL_SUBMITTED", PREREQ_FAILED: "PREREQ_FAILED",
                        QUOTA_EXCEEDED: "QUOTA_EXCEEDED"}
+
+
+MIGRATIONS = [
+    ("000-initial-schema", [
+        "CREATE TABLE TASKS (run_id INTEGER, task_dir STRING primary key, status INTEGER, try_count INTEGER, node_name STRING, external_id STRING, group_number INTEGER )",
+        "CREATE INDEX IDX_RUN_ID ON TASKS (run_id)",
+        "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
+        "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
+        "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)",
+        "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING, required_mem_override INTEGER)",
+        "CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)"]),
+    ("001-create-migration-table", ["CREATE TABLE SCHEMA_MIGRATION (name string primary key)"]),
+    ("001-add-run-columns", [
+        "ALTER TABLE RUNS RENAME TO OLD_RUNS_20150505",
+        "CREATE TABLE RUNS (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING, added_tags STRING, required_mem_override INTEGER, archive_name STRING)",
+        "INSERT INTO RUNS (run_id, run_dir, name, flock_config_path, parameters, required_mem_override) select run_id, run_dir, name, flock_config_path, parameters, required_mem_override FROM OLD_RUNS_20150505",
+        "DROP TABLE OLD_RUNS_20150505",
+        "CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)",
+        "CREATE INDEX IDX_RUN_ARCHIVE ON RUNS (archive_name)"])
+]
+
+def upgrade_db(db_path):
+    new_db = not os.path.exists(db_path)
+    connection = sqlite3.connect(db_path)
+    db = connection.cursor()
+
+    # determine which migrations have been applied
+    applied_migrations = set()
+    if not new_db:
+        applied_migrations.add("000-initial-schema")
+
+    db.execute("PRAGMA table_info(SCHEMA_MIGRATION)")
+    if len(db.fetchall()) > 0:
+        # if the table exists query the applied migrations
+        db.execute("SELECT name FROM SCHEMA_MIGRATION");
+        applied_migrations.update( [x[0] for x in db.fetchall()] )
+
+    # for each missing migration, get the statements to execute
+    statements_to_execute = []
+    for name, statements in MIGRATIONS:
+        if not (name in applied_migrations):
+            log.warn("Need to apply sql migration %s", name)
+            statements_to_execute.extend(statements)
+            statements_to_execute.append("INSERT INTO SCHEMA_MIGRATION VALUES ('%s')" % name)
+    db.close()
+    connection.close()
+
+    # If we have statements to execute, make a backup of the db before applying
+    if len(statements_to_execute) > 0:
+        timestamp = str(time.time())
+        db_path_backup = db_path+timestamp+".backup"
+        db_path_temp = db_path+timestamp+".migrate"
+        log.warn("Upgrading schema... ( %s -> %s )", db_path, db_path_temp)
+        try:
+            shutil.copy(db_path, db_path_temp)
+            connection = sqlite3.connect(db_path_temp)
+            db = connection.cursor()
+
+            for statement in statements_to_execute:
+                try:
+                    db.execute(statement)
+                except:
+                    print("failed:", statement)
+                    raise
+
+            connection.commit()
+            db.close()
+            connection.close()
+            log.warn("Renaming %s -> %s", db_path, db_path_backup)
+            os.rename(db_path, db_path_backup)
+            log.warn("Renaming %s -> %s", db_path_temp, db_path)
+            os.rename(db_path_temp, db_path)
+
+        except:
+            print("Migration failed.  DB was being written to "+db_path_temp)
+            raise
+        log.warn("DB upgrade complete")
+
 
 MONITOR_POLL_INTERVAL = 60
 def format_watch_command(flock_home, log_file):
@@ -91,31 +160,15 @@ class TaskStore:
     def __init__(self, db_path, flock_home, endpoint_url):
         self.flock_home = flock_home
         self.endpoint_url = endpoint_url
-        new_db = not os.path.exists(db_path)
 
+        upgrade_db(db_path)
+
+        self._archive_path = os.path.join(os.path.dirname(db_path), "archived")
         self._connection = sqlite3.connect(db_path, check_same_thread=False)
         self._db = self._connection.cursor()
         self._lock = threading.Lock()
         self._active_transaction = None
         self._cv_created = threading.Condition(self._lock)
-
-        if new_db:
-            for statement in DB_INIT_STATEMENTS:
-                self._db.execute(statement)
-        else:
-            # figure out if we need to add new column.  Maybe worth adding version to DB and proper schema upgrade.
-            self._db.execute("PRAGMA table_info(RUNS)")
-            has_added_tags = False
-            for row in self._db:
-                if row['name'] == 'added_tags':
-                    has_added_tags = True
-            if not has_added_tags:
-                self._db.execute("CREATE TABLE NEW_RUNS_20150505 (run_id integer primary key autoincrement, run_dir STRING UNIQUE, name STRING, flock_config_path STRING, parameters STRING, added_tags STRING, required_mem_override INTEGER)")
-                self._db.execute("INSERT INTO NEW_RUNS_20150505 (run_id, run_dir, name, flock_config_path, parameters, required_mem_override) select run_id, run_dir, name, flock_config_path, parameters, required_mem_override FROM RUNS")
-                self._db.execute("ALTER TABLE RUNS RENAME TO RUNS")
-                self._db.execute("ALTER TABLE NEW_RUNS_20150505 RENAME TO OLD_RUNS_20150505")
-                self._db.execute("DROP INDEX IDX_RUN_DIR")
-                self._db.execute("CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)")
 
     # serialize all access to db via transaction
     def transaction(self):
@@ -141,6 +194,10 @@ class TaskStore:
             rows = db.fetchall()
             assert len(rows) == 1
             run_dir, name, parameters, added_tags = rows[0]
+            if added_tags == "" or added_tags == None:
+                added_tags = {}
+            else:
+                added_tags = json.loads(added_tags)
             return dict(run_dir=run_dir, name=name, parameters=parameters, added_tags=added_tags)
 
     def set_tag(self, name, property, value):
@@ -148,7 +205,7 @@ class TaskStore:
             db.execute("SELECT added_tags FROM RUNS WHERE name = ?", [name])
             rows = db.fetchall()
             assert len(rows) == 1
-            added_tags_json = rows[0]
+            added_tags_json = rows[0][0]
 
             if added_tags_json == "" or added_tags_json == None:
                 added_tags = {}
@@ -161,20 +218,29 @@ class TaskStore:
             db.execute("UPDATE RUNS SET added_tags = ? WHERE name = ?", [added_tags_json, name])
             return True
 
-    def get_runs(self):
+    def get_runs(self, archive_name=None):
         with self.transaction() as db:
-            db.execute("SELECT run_id, run_dir, name, parameters FROM RUNS")
+            params = []
+            query = "SELECT run_id, run_dir, name, parameters, added_tags FROM RUNS"
+            if archive_name != None:
+                query += " WHERE archive_name = ?"
+                params.append(archive_name)
+            else:
+                query += " WHERE archive_name is null"
+            db.execute(query, params)
             rows = db.fetchall()
             result = []
-            for run_id, run_dir, name, parameters in rows:
+            for run_id, run_dir, name, parameters, added_tags in rows:
                 if parameters != None:
                     parameters = json.loads(parameters)
+                if added_tags != None:
+                    added_tags = json.loads(added_tags)
 
                 db.execute("SELECT status, count(1) FROM TASKS WHERE run_id = ? GROUP BY status", [run_id])
                 summary = {}
                 for status, count in db.fetchall():
                     summary[status_code_to_name[status]] = count
-                result.append(dict(run_dir=run_dir, name=name, parameters=parameters, status=summary))
+                result.append(dict(run_id=run_id, run_dir=run_dir, name=name, parameters=parameters, added_tags=added_tags, status=summary))
             return result
 
     def get_version(self):
@@ -183,13 +249,17 @@ class TaskStore:
     def run_created(self, run_dir, name, config_path, parameters):
         with self.transaction() as db:
             db.execute("INSERT INTO RUNS (run_dir, name, flock_config_path, parameters) VALUES (?, ?, ?, ?)", [run_dir, name, config_path, parameters])
-        return True
+            run_id = db.lastrowid
+            return run_id
 
     def _assert_path_sane(self, path):
         components = path.split("/")
         for c in components:
             assert c != ".."
             assert c != "" # make sure no leading slash
+
+    def _assert_filename_sane(self, filename):
+        assert not ("/" in filename)
 
     def _assert_run_valid(self, run_dir):
         with self.transaction() as db:
@@ -225,12 +295,12 @@ class TaskStore:
         return dict(data=base64.standard_b64encode(buffer), md5=hashlib.md5(buffer).hexdigest())
 
     def run_submitted(self, run_dir, name, config_path, parameters):
-        self.run_created(run_dir, name, config_path, parameters)
+        run_id = self.run_created(run_dir, name, config_path, parameters)
 
         notify_command = format_notify_command(self.flock_home, self.endpoint_url)
         config = flock_config.load_config([config_path], run_dir, {})
         task_definition_path = flock.write_files_for_running(self.flock_home, notify_command, run_dir, config.invoke, None, config.environment_variables, config.language)
-        return self.taskset_created(run_dir, task_definition_path)
+        return dict(run_id = run_id, task_dirs = self.taskset_created(run_dir, task_definition_path))
 
     def taskset_created(self, run_dir, task_definition_path):
         full_task_dir_paths = []
@@ -268,6 +338,27 @@ class TaskStore:
         self._lock.acquire()
         self._cv_created.wait(timeout)
         self._lock.release()
+
+    def archive_run(self, name, archive_name):
+        self._assert_filename_sane(archive_name)
+        with self.transaction() as db:
+            db.execute("SELECT run_id, run_dir, name FROM RUNS WHERE name = ?", [name])
+            rows = db.fetchall()
+            if len(rows) != 1:
+                return None
+
+            run_id, run_dir, run_name = rows[0]
+
+            # a bit of a hack: We actually store the runs in a path like .../20150101-100101/files.  However, it's preferable to get the parent which contains the config.json and
+            # maybe other small files
+            run_dir = os.path.dirname(run_dir)
+            new_run_dir = os.path.join(self._archive_path, archive_name, os.path.basename(run_dir))
+            print "renaming %s to %s, name=%s" % (run_dir, new_run_dir, run_name)
+            os.renames(run_dir, new_run_dir)
+
+            db.execute("DELETE FROM TASKS WHERE run_id = ?", [run_id])
+            db.execute("UPDATE RUNS SET archive_name = ?, run_dir = ? WHERE run_id = ?", [archive_name, new_run_dir, run_id])
+            return new_run_dir
 
     def delete_run(self, run_dir):
         with self.transaction() as db:
@@ -593,7 +684,7 @@ def main():
     print "Listening on port %d..." % port
     for method in ["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                    "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override",
-                   "get_run_tasks", "get_run", "set_tag"]:
+                   "get_run_tasks", "get_run", "set_tag", "archive_run"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
     server.register_function(make_function_wrapper(wingman_sge_stat.get_host_summary), "get_host_summary")
 
