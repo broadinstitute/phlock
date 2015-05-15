@@ -32,6 +32,7 @@ def main(cmd_line_args=None):
     parser.add_argument('--rundir', help="Override the run directory used by this run")
     parser.add_argument('--workdir', help="Override the working directory used by each task")
     parser.add_argument('--executor', help="Override the execution method")
+    parser.add_argument("--debug_task", help="Used when 'debug' command is executed")
     parser.add_argument('command', help='One of: run, check, poll, retry or kill')
     parser.add_argument('run_id', help='Path to config file, which in turn will be used as the id for this run')
 
@@ -117,6 +118,8 @@ def main(cmd_line_args=None):
         f.retry(run_id, not args.nowait, args.maxsubmit)
     elif command == "failed":
         f.list_failures(run_id)
+    elif command == "debug":
+        f.make_debug_script(run_id, args.debug_task, config.workdir)
     else:
         raise Exception("Unknown command: %s" % command)
 

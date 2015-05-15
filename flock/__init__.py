@@ -413,6 +413,26 @@ class Flock(object):
             if task.status in [FAILED, UNKNOWN]:
                 os.unlink("%s/job_id.txt" % task.full_path)
         self.poll(run_id, wait, maxsubmit)
+    
+    def make_debug_script(self, run_id, task_dir, workdir):
+        # this is all a hack but a reoccurring problem so building it in
+        # look up the task's task.sh script and create a debug.sh script in its place which runs the job as if run under flock
+        tasks = self.job_queue.find_tasks(run_id)
+        task = [x for x in tasks if x.task_dir.split("/")[-1] == task_dir][0]
+        debug_script = open(task.full_path+"/debug.sh", "w")
+        debug_script.write("cd %s\n" % workdir)
+        fd = open(task.full_path+"/task.sh")
+        import re
+        for line in fd.readlines():
+          m = re.match("exec R ([^<]+)<\\s+(.*)", line)
+          if m != None:
+            debug_script.write("echo '!!! When R starts execute: source(\"%s\")'\n" % m.group(2))
+            debug_script.write("R %s\n" % m.group(1))
+          else:
+            debug_script.write(line)
+        debug_script.close()
+        fd.close()
+        print "Wrote debug script at: %s" % (task.full_path+"/debug.sh")
 
 def get_flock_home():
     return os.path.dirname(os.path.realpath(__file__))
