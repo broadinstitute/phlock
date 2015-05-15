@@ -33,14 +33,49 @@ def setup_run_dir():
 
 def cleanup_run_dir():
     global temp_dir
-    shutil.rmtree(temp_dir)
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
     temp_dir = None
 
     global temp_db
-    os.unlink(temp_db)
+    if os.path.exists(temp_db):
+        os.unlink(temp_db)
     print "deleting %s" % temp_db
     temp_db = None
 
+@with_setup(setup_run_dir, cleanup_run_dir)
+def test_archive_run():
+    store = wingman.TaskStore(temp_db, "flock_home", endpoint_url="http://invalid:2000")
+
+    run = store.run_submitted(run_dir, "name", config_path, "{}")
+    assert len(store.get_runs()) == 1
+
+    # now, archive it
+    new_dir = store.archive_run("name", "test_archive")
+    assert len(store.get_runs()) == 0
+    assert len(store.get_runs("test_archive")) == 1
+
+    # make sure we got the config file
+    assert os.path.exists(os.path.join(new_dir, "config"))
+
+    print "get_run", store.get_run("name")
+
+    assert store.get_run("name")["run_dir"] == new_dir
+
+@with_setup(setup_run_dir, cleanup_run_dir)
+def test_set_tag():
+    store = wingman.TaskStore(temp_db, "flock_home", endpoint_url="http://invalid:2000")
+
+    # create a run which we can manipulate
+    store.run_submitted(run_dir, "name", config_path, "{}")
+
+    store.set_tag("name", "prop1", "1")
+
+    assert store.get_run("name")["added_tags"]["prop1"] == "1"
+
+    store.set_tag("name", "prop1", "2")
+
+    assert store.get_run("name")["added_tags"]["prop1"] == "2"
 
 @with_setup(setup_run_dir, cleanup_run_dir)
 def test_successful_run_lifecycle():
@@ -49,7 +84,8 @@ def test_successful_run_lifecycle():
     assert len(store.get_runs()) == 0
 
     # simulate submission of the run to wingman
-    full_task_dir_paths = store.run_submitted(run_dir, "name", config_path, "{}")
+    run = store.run_submitted(run_dir, "name", config_path, "{}")
+    full_task_dir_paths = run['task_dirs']
 
     # make sure we got the task directory for the task within that run
     assert len(full_task_dir_paths) == 1
@@ -82,7 +118,8 @@ def test_failed_run_lifecycle():
     store = wingman.TaskStore(temp_db, "flock_home", endpoint_url="http://invalid:2000")
 
     # simulate submission of the run to wingman
-    full_task_dir_paths = store.run_submitted(run_dir, "name", config_path, "{}")
+    run = store.run_submitted(run_dir, "name", config_path, "{}")
+    full_task_dir_paths = run['task_dirs']
     task_dir = full_task_dir_paths[0]
 
     # at this point, we expect a single run, with a single task which is ready for submission
@@ -111,7 +148,8 @@ def test_node_failure():
     store = wingman.TaskStore(temp_db, "flock_home", endpoint_url="http://invalid:2000")
 
     # simulate submission of the run to wingman
-    full_task_dir_paths = store.run_submitted(run_dir, "name", config_path, "{}")
+    run = store.run_submitted(run_dir, "name", config_path, "{}")
+    full_task_dir_paths = run['task_dirs']
     task_dir = full_task_dir_paths[0]
 
     # at this point, we expect a single run, with a single task which is ready for submission
