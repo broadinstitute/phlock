@@ -32,6 +32,7 @@ class ConsolidatedMonitor(flock.JobListener):
                      "else\n"
                      "  set -e\n"
                      "  %(notify_command)s failed %(run_id)s %(task_dir)s\n"
+                     "  exit -10\n"
                      "fi\n" % dict(run_id=run_id,
                                    task_dir=d,
                                    task_script=task_script,
