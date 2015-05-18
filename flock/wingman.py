@@ -93,7 +93,8 @@ def upgrade_db(db_path):
         if not (name in applied_migrations):
             log.warn("Need to apply sql migration %s", name)
             statements_to_execute.extend(statements)
-            statements_to_execute.append("INSERT INTO SCHEMA_MIGRATION VALUES ('%s')" % name)
+            if name != "000-initial-schema":
+                statements_to_execute.append("INSERT INTO SCHEMA_MIGRATION VALUES ('%s')" % name)
     db.close()
     connection.close()
 
@@ -346,6 +347,14 @@ class TaskStore:
         self._lock.acquire()
         self._cv_created.wait(timeout)
         self._lock.release()
+
+    def list_archives(self):
+        with self.transaction() as db:
+            db.execute("SELECT distinct archive_name FROM RUNS")
+            rows = db.fetchall()
+            archive_names = [x[0] for x in rows]
+
+            return archive_names
 
     def archive_run(self, name, archive_name):
         self._assert_filename_sane(archive_name)
@@ -692,7 +701,7 @@ def main():
     print "Listening on port %d..." % port
     for method in ["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                    "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override",
-                   "get_run_tasks", "get_run", "set_tag", "archive_run"]:
+                   "get_run_tasks", "get_run", "set_tag", "archive_run", "list_archives"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
     server.register_function(make_function_wrapper(wingman_sge_stat.get_host_summary), "get_host_summary")
 

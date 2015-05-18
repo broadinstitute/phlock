@@ -50,6 +50,8 @@ def test_archive_run():
     run = store.run_submitted(run_dir, "name", config_path, "{}")
     assert len(store.get_runs()) == 1
 
+    assert not ("test_archive" in store.list_archives())
+
     # now, archive it
     new_dir = store.archive_run("name", "test_archive")
     assert len(store.get_runs()) == 0
@@ -61,6 +63,8 @@ def test_archive_run():
     print "get_run", store.get_run("name")
 
     assert store.get_run("name")["run_dir"] == new_dir
+    assert ("test_archive" in store.list_archives())
+
 
 @with_setup(setup_run_dir, cleanup_run_dir)
 def test_set_tag():
@@ -177,7 +181,7 @@ def test_file_ops():
     with open(os.path.join(run_dir, "sample"), "w") as fd:
         fd.write("test-text")
 
-    files = store.get_run_files(run_dir, "*")
+    files = store.get_run_files("name", "*")
     print files
     found_dir = False
     found_file = False
@@ -193,5 +197,5 @@ def test_file_ops():
     assert found_file
 
     import base64
-    file_content = store.get_file_content(run_dir, "sample", 0, 10000)
+    file_content = store.get_file_content("name", "sample", 0, 10000)
     assert base64.standard_b64decode(file_content['data']) == "test-text"
