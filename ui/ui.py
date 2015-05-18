@@ -423,14 +423,12 @@ def show_run(run_name):
 @app.route("/list-run-files/<run_name>/<path:file_path>")
 def list_run_files(run_name, file_path):
 
-    run_dir = get_run_files_path(run_name)
-
     if file_path == "":
         wildcard = "*"
     else:
         wildcard = file_path+"/*"
 
-    files = get_wingman_service().get_run_files(run_dir, wildcard)
+    files = get_wingman_service().get_run_files(run_name, wildcard)
     for file in files:
         file["name"] = os.path.basename(file["name"])
         if file_path == "":

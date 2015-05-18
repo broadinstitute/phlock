@@ -271,11 +271,11 @@ class TaskStore:
 
     def _get_run_dir_for_run_name(self, run_name):
         with self.transaction() as db:
-            db.execute("SELECT count(1), min(run_id) FROM RUNS WHERE name = ?", [run_name])
+            db.execute("SELECT count(1), min(run_id), min(run_dir) FROM RUNS WHERE name = ?", [run_name])
             counts = db.fetchall()
             assert len(counts) == 1
             assert counts[0][0] == 1
-            return counts[0][1]
+            return counts[0][2]
 
     def get_run_files(self, run_name, wildcard):
         run_dir = self._get_run_dir_for_run_name(run_name)
