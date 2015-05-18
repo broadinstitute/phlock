@@ -334,7 +334,11 @@ class ClusterManager(object):
             reqs_by_type[spot_req.type] += 1
 
         wingman_service = self.wingman_service_factory()
-        host_summary = wingman_service.get_host_summary()
+        try:
+            host_summary = wingman_service.get_host_summary()
+        except Exception, e:
+            log.exception("Exception occurred trying to get host summary.  Skipping update to log.")
+            return
 
         running_jobs = 0
         for host in host_summary["hosts"]:
@@ -349,6 +353,7 @@ class ClusterManager(object):
         fd = open(self.state_log_path, "a")
         fd.write(json.dumps(state)+"\n")
         fd.close()
+
 
     def get_cluster_state_log(self):
         recs = []
