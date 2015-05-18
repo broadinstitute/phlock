@@ -387,7 +387,7 @@ def get_wingman_service_factory():
         client_methods = set(["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run",
                               "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                               "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs",
-                              "set_required_mem_override", "get_run_tasks", "get_host_summary", "archive_run"])
+                              "set_required_mem_override", "get_run_tasks", "get_host_summary", "archive_run", "list_archives"])
         return sshxmlrpc.SshXmlServiceProxy(master_dns_name, "ubuntu", key_location, 3010, client_methods)
 
     return factory
@@ -440,17 +440,15 @@ def list_run_files(run_name, file_path):
 
 @app.route("/view-run-file/<run_name>/<path:file_path>")
 def view_run_file(run_name, file_path):
-    run_dir = get_run_files_path(run_name)
-
     service = get_wingman_service()
-    files = service.get_run_files(run_dir, file_path)
+    files = service.get_run_files(run_name, file_path)
     assert len(files) == 1
     length = files[0]['size']
     def stream_file():
         offset = 0
         read_size = 50000
         while offset < length:
-            payload = service.get_file_content(run_dir, file_path, offset, read_size)
+            payload = service.get_file_content(run_name, file_path, offset, read_size)
             content = base64.standard_b64decode(payload['data'])
             offset += read_size
             if offset < length:
@@ -495,6 +493,9 @@ def job_dashboard():
 
     existing_jobs = get_jobs_from_remote(archive_name)
 
+    archive_names = get_wingman_service().list_archives()
+    archive_names.sort()
+
     if config_name == "" or config_name == None:
         config = None
         config_name = ""
@@ -528,7 +529,8 @@ def job_dashboard():
     return flask.render_template("job-dashboard.html", jobs=flattened,
                                  column_names=column_names, tags=tag_universe,
                                  fixed_values=fixed_values.items(), current_filter_tags=filter_tags,
-                                 config_name=config_name, config_names=projections.keys())
+                                 config_name=config_name, config_names=projections.keys(),
+                                 archive_names=archive_names, archive_name=archive_name)
 
 job_pattern = re.compile("\\d+-\\d+")
 

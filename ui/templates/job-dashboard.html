@@ -88,6 +88,15 @@
     </form>
 
     <form>
+        <select name="archive_name">
+        {% for this_archive_name in archive_names %}
+            <option value="{{ this_archive_name }}" {% if archive_name == this_archive_name %} selected {% endif %} >{{ this_archive_name }}</option>
+        {% endfor %}
+        </select>
+        <input type="submit" value="View archive" class="btn">
+    </form>
+
+    <form>
         {% if current_filter_tags|length > 0 %}
             Applied filters
             <ul>
