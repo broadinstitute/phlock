@@ -387,7 +387,7 @@ def get_wingman_service_factory():
         client_methods = set(["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run",
                               "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                               "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs",
-                              "set_required_mem_override", "get_run_tasks", "get_host_summary"])
+                              "set_required_mem_override", "get_run_tasks", "get_host_summary", "archive_run"])
         return sshxmlrpc.SshXmlServiceProxy(master_dns_name, "ubuntu", key_location, 3010, client_methods)
 
     return factory
@@ -400,8 +400,8 @@ def get_wingman_service():
         per_thread_cache.wingman_service_factory = wingman_service_factory
     return wingman_service_factory()
 
-def get_jobs_from_remote():
-    return get_wingman_service().get_runs()
+def get_jobs_from_remote(archive_name=None):
+    return get_wingman_service().get_runs(archive_name)
 
 def get_run_files_path(run_name):
     return config['TARGET_ROOT'] + "/" + run_name + "/files"
@@ -493,8 +493,9 @@ def job_dashboard():
 
     filter_tags = request.values.getlist("tag")
     config_name = request.values.get("config_name")
+    archive_name = request.values.get("archive_name")
 
-    existing_jobs = get_jobs_from_remote()
+    existing_jobs = get_jobs_from_remote(archive_name)
 
     if config_name == "" or config_name == None:
         config = None
@@ -549,18 +550,13 @@ def archive_jobs():
     job_ids = parse_and_validate_jobs(request.values["job-ids"])
     destination = request.values["destination"]
 
-    assert re.match('^[\w-]+$', destination) is not None
+    assert re.match('^[\w._-]+$', destination) is not None
 
     service = get_wingman_service()
     for job_name in job_ids:
-        service.delete_run(get_run_dir_for_job_name(job_name))
+        service.archive_run(job_name, destination)
 
-    ec2 = get_ec2_connection()
-    master, key_location = get_master_info(ec2)
-
-    cmd = "mv " + " ".join([config['TARGET_ROOT'] + "/" + job_id for job_id in job_ids])+ " " + os.path.join(config['TARGET_ROOT'], destination)
-
-    return run_command(["ssh", "-o", "UserKnownHostsFile=/dev/null", "-o", "StrictHostKeyChecking=no", "-i", key_location, "ubuntu@"+master.dns_name, cmd], "Moving runs to %s" % destination)
+    return redirect_with_success("archived %d jobs" % len(job_ids), "/")
 
 @app.route("/retry-jobs", methods=["POST"])
 @secured

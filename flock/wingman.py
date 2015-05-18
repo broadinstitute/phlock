@@ -269,8 +269,16 @@ class TaskStore:
             assert counts[0][0] == 1
             return counts[0][1]
 
-    def get_run_files(self, run_dir, wildcard):
-        self._assert_run_valid(run_dir)
+    def _get_run_dir_for_run_name(self, run_name):
+        with self.transaction() as db:
+            db.execute("SELECT count(1), min(run_id) FROM RUNS WHERE name = ?", [run_name])
+            counts = db.fetchall()
+            assert len(counts) == 1
+            assert counts[0][0] == 1
+            return counts[0][1]
+
+    def get_run_files(self, run_name, wildcard):
+        run_dir = self._get_run_dir_for_run_name(run_name)
         self._assert_path_sane(wildcard)
         filenames = glob.glob(os.path.join(run_dir, wildcard))
 
@@ -283,8 +291,8 @@ class TaskStore:
 
         return result
 
-    def get_file_content(self, run_dir, path, offset, length):
-        self._assert_run_valid(run_dir)
+    def get_file_content(self, run_name, path, offset, length):
+        run_dir = self._get_run_dir_for_run_name(run_name)
         self._assert_path_sane(path)
         assert length < 1000000
         fd = open(os.path.join(run_dir, path))
