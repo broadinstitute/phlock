@@ -68,7 +68,16 @@ MIGRATIONS = [
         "INSERT INTO RUNS (run_id, run_dir, name, flock_config_path, parameters, required_mem_override) select run_id, run_dir, name, flock_config_path, parameters, required_mem_override FROM OLD_RUNS_20150505",
         "DROP TABLE OLD_RUNS_20150505",
         "CREATE INDEX IDX_RUN_DIR ON RUNS (run_dir)",
-        "CREATE INDEX IDX_RUN_ARCHIVE ON RUNS (archive_name)"])
+        "CREATE INDEX IDX_RUN_ARCHIVE ON RUNS (archive_name)"]),
+    ("002-add-update-time-on-task", [
+        "ALTER TABLE TASKS RENAME TO OLD_TASKS_20150520",
+        "CREATE TABLE TASKS (run_id INTEGER, task_dir STRING primary key, status INTEGER, try_count INTEGER, node_name STRING, external_id STRING, group_number INTEGER, update_time NUMBER )",
+        "INSERT INTO TASKS (run_id, task_dir, status, try_count, node_name, external_id, group_number) SELECT run_id, task_dir, status, try_count, node_name, external_id, group_number FROM OLD_TASKS_20150520",
+        "DROP TABLE OLD_TASKS_20150520",
+        "CREATE INDEX IDX_RUN_ID ON TASKS (run_id)",
+        "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
+        "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
+        "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)"])
 ]
 
 def upgrade_db(db_path):
@@ -267,7 +276,7 @@ class TaskStore:
             db.execute("SELECT count(1), min(run_id) FROM RUNS WHERE run_dir = ?", [run_dir])
             counts = db.fetchall()
             assert len(counts) == 1
-            assert counts[0][0] == 1
+            assert counts[0][0] == 1, "could not find run with run_dir %s" % (run_dir)
             return counts[0][1]
 
     def _get_run_dir_for_run_name(self, run_name):
@@ -275,7 +284,7 @@ class TaskStore:
             db.execute("SELECT count(1), min(run_id), min(run_dir) FROM RUNS WHERE name = ?", [run_name])
             counts = db.fetchall()
             assert len(counts) == 1
-            assert counts[0][0] == 1
+            assert counts[0][0] == 1, "could not find run with name %s" % (run_name)
             return counts[0][2]
 
     def get_run_files(self, run_name, wildcard):
@@ -390,49 +399,43 @@ class TaskStore:
 
     def task_submitted(self, task_dir, external_id):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ?, external_id = ? WHERE task_dir = ?", [SUBMITTED, external_id, task_dir])
+            db.execute("UPDATE TASKS SET update_time = ?, status = ?, external_id = ? WHERE task_dir = ?", [time.time(), SUBMITTED, external_id, task_dir])
             if db.rowcount == 0:
                 log.warn("task_submitted(%s, %s) called, but no record in db", task_dir, external_id)
         return True
 
     def task_started(self, task_dir, node_name):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET try_count = try_count + 1, node_name = ?, status = ? WHERE task_dir = ?", [node_name, STARTED, task_dir])
+            db.execute("UPDATE TASKS SET update_time = ?, try_count = try_count + 1, node_name = ?, status = ? WHERE task_dir = ?", [time.time(), node_name, STARTED, task_dir])
             if db.rowcount == 0:
                 log.warn("task_started(%s, %s) called, but no record in db", task_dir, node_name)
         return True
 
-    def task_failed(self, task_dir):
-        with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [FAILED, task_dir])
-            if db.rowcount == 0:
-                log.warn("task_failed(%s) called, but no record in db", task_dir)
-        return True
 
     def set_task_status(self, task_dir, status):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [status, task_dir])
+            db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE task_dir = ?", [time.time(), status, task_dir])
             if db.rowcount == 0:
                 log.warn("set_task_status(%s, %s) called, but no record in db", task_dir, status)
         return True
 
+    def task_failed(self, task_dir):
+        return self.set_task_status(task_dir, FAILED)
+
     def task_missing(self, task_dir):
-        with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [MISSING, task_dir])
-            if db.rowcount == 0:
-                log.warn("task_missing(%s) called, but no record in db", task_dir)
-        return True
+        return self.set_task_status(task_dir, MISSING)
 
     def task_completed(self, task_dir):
+        return self.set_task_status(task_dir, COMPLETED)
+
+    def mark_stale_missing_tasks_as_failed(self, max_stale_secs=15*60):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE task_dir = ?", [COMPLETED, task_dir])
-            if db.rowcount == 0:
-                log.warn("task_completed(%s) called, but no record in db", task_dir)
-        return True
+            db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE update_time < ? and STATUS = ?", [time.time() - max_stale_secs, MISSING])
+
 
     def node_disappeared(self, node_name):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET status = ? WHERE node_name = ? and status in (?, ?)", [WAITING, node_name, STARTED, MISSING])
+            db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE node_name = ? and status in (?, ?)", [time.time(), WAITING, node_name, STARTED, MISSING])
         return True
 
     def retry_run(self, run_dir):
@@ -442,7 +445,7 @@ class TaskStore:
             if len(rows) == 1:
                 run_id = rows[0][0]
                 # treating MISSING as the same as FAILED.  Perhaps there should be something that transforms MISSING tasks to FAILED after some timeout
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?, ?, ?, ?)", [WAITING, run_id, FAILED, KILLED, MISSING, PREREQ_FAILED, QUOTA_EXCEEDED])
+                db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE run_id = ? and status in (?, ?, ?, ?, ?)", [time.time(), WAITING, run_id, FAILED, KILLED, MISSING, PREREQ_FAILED, QUOTA_EXCEEDED])
         return True
 
     def kill_run(self, run_dir):
@@ -452,8 +455,8 @@ class TaskStore:
             if len(rows) == 1:
                 run_id = rows[0][0]
 
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILL_PENDING, run_id, SUBMITTED, STARTED])
-                db.execute("UPDATE TASKS SET status = ? WHERE run_id = ? and status in (?, ?)", [KILLED, run_id, READY, WAITING])
+                db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE run_id = ? and status in (?, ?)", [time.time(), KILL_PENDING, run_id, SUBMITTED, STARTED])
+                db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE run_id = ? and status in (?, ?)", [time.time(), KILLED, run_id, READY, WAITING])
 
                 # wake up main loop which is going to perform the actual killing
                 self._cv_created.notify_all()
@@ -524,7 +527,7 @@ class TaskStore:
             db.execute("UPDATE RUNS set required_mem_override = ? WHERE run_dir = ?", [mem_override, run_id])
         return True
 
-def handle_kill_pending_tasks(store, queue, batch_size=10):
+def handle_kill_pending_tasks(store, queue, batch_size=100):
     external_id_and_task_dirs = dict(store.find_tasks_external_id_by_status(KILL_PENDING, limit=batch_size))
     log.info("handle_kill_pending_tasks: %s", repr(external_id_and_task_dirs))
     if len(external_id_and_task_dirs) > 0:
@@ -642,8 +645,11 @@ def main_loop(endpoint_url, flock_home, store, max_submitted, localQueue = False
 
     last_check_for_missing = None
 
+    # periodic tasks
     while True:
         try:
+            store.mark_stale_missing_tasks_as_failed()
+
             needed_to_kill_tasks = handle_kill_pending_tasks(store, t_queue)
             submit_created_tasks(listener, store, queue_factory, max_submitted)
 
