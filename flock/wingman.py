@@ -73,6 +73,7 @@ MIGRATIONS = [
         "ALTER TABLE TASKS RENAME TO OLD_TASKS_20150520",
         "CREATE TABLE TASKS (run_id INTEGER, task_dir STRING primary key, status INTEGER, try_count INTEGER, node_name STRING, external_id STRING, group_number INTEGER, update_time NUMBER )",
         "INSERT INTO TASKS (run_id, task_dir, status, try_count, node_name, external_id, group_number) SELECT run_id, task_dir, status, try_count, node_name, external_id, group_number FROM OLD_TASKS_20150520",
+        "UPDATE TASKS SET update_time = %f" % time.time(),
         "DROP TABLE OLD_TASKS_20150520",
         "CREATE INDEX IDX_RUN_ID ON TASKS (run_id)",
         "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
