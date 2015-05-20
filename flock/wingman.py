@@ -431,7 +431,7 @@ class TaskStore:
 
     def mark_stale_missing_tasks_as_failed(self, max_stale_secs=15*60):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE update_time < ? and STATUS = ?", [time.time() - max_stale_secs, MISSING])
+            db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE update_time < ? and STATUS = ?", [time.time(), FAILED, time.time() - max_stale_secs, MISSING])
 
 
     def node_disappeared(self, node_name):
