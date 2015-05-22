@@ -497,11 +497,13 @@ class TaskStore:
     def count_tasks_by_group_number(self, run_id):
         # record of the form (finished_count, failed_count, running_count, waiting_count)
         result = collections.defaultdict(lambda: [0,0,0,0])
+        as_map = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
         with self.transaction() as db:
             db.execute("SELECT group_number, status, count(*) FROM tasks WHERE run_id = ? group by group_number, status",
                        [run_id])
             for number, status, count in db.fetchall():
                 record = result[number]
+                as_map[number][status] += count
                 if status in [COMPLETED]:
                     record[0] += 1
                 elif status in [KILLED, FAILED, PREREQ_FAILED, QUOTA_EXCEEDED]:
@@ -511,6 +513,7 @@ class TaskStore:
                 else:
                     record[2] += 1
 
+        log.warn("count_tasks_by_group_number(%r): as_map=%r, result=%r", run_id, as_map, result)
         return result
 
     def get_config_path(self, run_id):
@@ -599,7 +602,7 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted):
             if other_group < group:
                 if failed_count > 0:
                     prereq_failed = True
-                elif running_count > 0:
+                elif running_count > 0 or waiting_count > 0:
                     prereq_finished = False
 
         if prereq_failed:
