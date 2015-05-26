@@ -387,7 +387,8 @@ def get_wingman_service_factory():
         client_methods = set(["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run",
                               "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                               "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs",
-                              "set_required_mem_override", "get_run_tasks", "get_host_summary", "archive_run", "list_archives"])
+                              "set_required_mem_override", "get_run_tasks", "get_host_summary", "archive_run", "list_archives",
+                              "set_tag"])
         return sshxmlrpc.SshXmlServiceProxy(master_dns_name, "ubuntu", key_location, 3010, client_methods)
 
     return factory
@@ -492,6 +493,13 @@ def job_dashboard():
     archive_name = request.values.get("archive_name")
 
     existing_jobs = get_jobs_from_remote(archive_name)
+    # overlay the tags with 'added_tags'
+    for job in existing_jobs:
+        added_tags = job['added_tags']
+        if added_tags == None:
+            added_tags = {}
+        for k, v in added_tags.items():
+            job["parameters"][k] = v
 
     archive_names = get_wingman_service().list_archives()
     archive_names.sort()
@@ -567,6 +575,17 @@ def retry_job():
         service.retry_run(get_run_dir_for_job_name(job_name))
     return redirect_with_success("retried %d jobs" % len(job_ids), "/")
 
+
+@app.route("/job-set-tag", methods=["POST"])
+@secured
+def set_tag():
+    service = get_wingman_service()
+    job_ids = parse_and_validate_jobs(request.values["job-ids"])
+    tag_name = request.values['tag']
+    tag_value = request.values['value']
+    for job_name in job_ids:
+        service.set_tag(job_name, tag_name, tag_value)
+    return redirect_with_success("set %s = %s on %d jobs" % (tag_name, tag_value, len(job_ids)), "/")
 
 @app.route("/kill-jobs", methods=["POST"])
 @secured

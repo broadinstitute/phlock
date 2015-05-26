@@ -148,6 +148,7 @@
     <button id="kill-selected" class="btn">Kill</button>
     <button id="retry-selected" class="btn">Retry</button>
     <button id="mem-override-selected" class="btn">Override</button>
+    <button id="set-tags-selected" class="btn">Set Tag</button>
 
     <table class="table">
         <thead>
@@ -252,6 +253,47 @@
         </div>
     </div>
 
+    <!-- Set tag dialog -->
+    <div class="modal fade" id="modal-set-tag-dialog" tabindex="-1" role="dialog" aria-labelledby="set-tag-overrideModalLabel"
+         aria-hidden="true">
+        <div class="modal-dialog">
+            <form action="/job-set-tag" method="POST">
+                <input type="hidden" value="" name="job-ids" id="set-tags-job-ids">
+
+                <div class="modal-content">
+                    <div class="modal-body">
+
+                        <div class="form-horizontal" role="form">
+                            <div class="form-group">
+                                <label for="tagname" class="col-sm-7 control-label">Property name</label>
+
+                                <div class="col-sm-5">
+                                    <input type="text" class="form-control" name="tag" id="tagname"
+                                           placeholder="">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="tagvalue" class="col-sm-7 control-label">Property value</label>
+
+                                <div class="col-sm-5">
+                                    <input type="text" class="form-control" name="value" id="tagvalue"
+                                           placeholder="">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Set</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
     <!-- Memory override dialog -->
     <div class="modal fade" id="modal-mem-override-dialog" tabindex="-1" role="dialog" aria-labelledby="mem-overrideModalLabel"
          aria-hidden="true">
@@ -336,6 +378,14 @@
                 $("#mem-override-job-ids").prop("value", job_id_list_json);
                 memOverrideDialog.modal("show");
             });
+
+            var setTagDialog = $("#modal-set-tag-dialog");
+            $("#set-tags-selected").on("click", function () {
+                var job_id_list_json = getJobSelectionJson()
+                $("#set-tags-job-ids").prop("value", job_id_list_json);
+                setTagDialog.modal("show");
+            });
+
         });
     </script>
 {% endblock %}

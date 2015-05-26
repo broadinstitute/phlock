@@ -92,6 +92,13 @@ def summarize(jobs):
             if type(v) == list:
                 v = tuple(v)
             values_per_key[k].add(v)
+
+    # second pass: add "" whenever a tag is missing
+    for job in jobs:
+        for k in values_per_key.keys():
+            if not (k in job.parameters):
+                values_per_key[k].add("")
+
     return values_per_key
 
 def factor_out_common(summary):
