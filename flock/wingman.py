@@ -147,6 +147,8 @@ def format_watch_command(flock_home, log_file):
 def format_notify_command(flock_home, endpoint_url):
     return "python %s/wingman_notify.py %s" % (flock_home, endpoint_url)
 
+THREAD_LOCALS = threading.local()
+
 class TransactionContext:
     def __init__(self, connection, lock):
         self.connection = connection
@@ -169,6 +171,7 @@ class TransactionContext:
                 self.connection.rollback()
             self._db.close()
             self.lock.release()
+            THREAD_LOCALS._active_transaction = None
 
 class TaskStore:
     def __init__(self, db_path, flock_home, endpoint_url):
@@ -179,16 +182,15 @@ class TaskStore:
 
         self._archive_path = os.path.join(os.path.dirname(db_path), "archived")
         self._connection = sqlite3.connect(db_path, check_same_thread=False)
-        self._db = self._connection.cursor()
         self._lock = threading.Lock()
-        self._active_transaction = None
+        THREAD_LOCALS._active_transaction = None
         self._cv_created = threading.Condition(self._lock)
 
     # serialize all access to db via transaction
     def transaction(self):
-        if self._active_transaction is None:
-            self._active_transaction = TransactionContext(self._connection, self._lock)
-        return self._active_transaction
+        if THREAD_LOCALS._active_transaction is None:
+            THREAD_LOCALS._active_transaction = TransactionContext(self._connection, self._lock)
+        return THREAD_LOCALS._active_transaction
 
     # TODO: Switch this to look up runs by name, not run_dir
     def get_run_tasks(self, run_dir):
