@@ -188,7 +188,7 @@ class TaskStore:
 
     # serialize all access to db via transaction
     def transaction(self):
-        if THREAD_LOCALS._active_transaction is None:
+        if (not hasattr(THREAD_LOCALS, "_active_transaction")) or THREAD_LOCALS._active_transaction is None:
             THREAD_LOCALS._active_transaction = TransactionContext(self._connection, self._lock)
         return THREAD_LOCALS._active_transaction
 
