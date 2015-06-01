@@ -156,14 +156,17 @@ class TransactionContext:
     def __enter__(self):
         if self.depth == 0:
             self.lock.acquire()
-        self._db = self.connection.cursor()
+            self._db = self.connection.cursor()
         self.depth += 1
         return self._db
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.depth -= 1
         if self.depth == 0:
-            self.connection.commit()
+            if exc_type == None:
+                self.connection.commit()
+            else:
+                self.connection.rollback()
             self._db.close()
             self.lock.release()
 
