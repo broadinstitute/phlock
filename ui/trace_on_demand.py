@@ -10,7 +10,7 @@ def dump_trace(sig, frame):
             code.append('File: "%s", line %d, in %s' % (filename, lineno, name))
             if line:
                 code.append("  %s" % (line.strip()))
-    sys.stderr.write("\n".join(code))
+    sys.stderr.write("".join([x+"\n" for x in code]))
     sys.stderr.flush()
 
 def install():
