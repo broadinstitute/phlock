@@ -30,7 +30,7 @@ import batch_submit
 import json
 import base64
 
-oid = OpenID(None, "/tmp/clusterui-openid")
+oid = OpenID()
 terminal_manager = term.TerminalManager()
 log = logging.getLogger("ui")
 
@@ -964,6 +964,9 @@ def init_manager():
                                                      config["MONITOR_JSON_LOG"])
 
 if __name__ == "__main__":
+    import trace_on_demand
+    trace_on_demand.install()
+
     parser = argparse.ArgumentParser(description='Start webserver for cluster ui')
     parser.add_argument('--config', dest="config_path", help='config file to use', default=os.path.expanduser("~/.clusterui.config"))
     args = parser.parse_args()
@@ -979,6 +982,7 @@ if __name__ == "__main__":
                       IGNORE_GRP = False,
                       MONITOR_JSON_LOG="monitor-log.json")
     app.config.from_pyfile(args.config_path)
+    app.config.update(OPENID_FS_STORE_PATH="/tmp/openid-clusterui-"+app.config['CLUSTER_NAME'])
     load_starcluster_config(app.config)
 
     oid.init_app(app)
