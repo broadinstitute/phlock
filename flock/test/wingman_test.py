@@ -81,6 +81,11 @@ def test_set_tag():
 
     assert store.get_run("name")["added_tags"]["prop1"] == "2"
 
+def check_task_status(tasks, expected):
+    for task in tasks:
+        task_name = os.path.basename(task['task_dir'])
+        assert expected[task_name] == task["status"], "Expected task %s to be %s but was %s" % (task_name, expected[task_name], task["status"])
+
 @with_setup(setup_run_dir, cleanup_run_dir)
 def test_successful_run_lifecycle():
     store = wingman.TaskStore(temp_db, "flock_home", endpoint_url="http://invalid:2000")
@@ -90,10 +95,11 @@ def test_successful_run_lifecycle():
     # simulate submission of the run to wingman
     run = store.run_submitted(run_dir, "name", config_path, "{}")
     full_task_dir_paths = run['task_dirs']
+    print full_task_dir_paths
 
     # make sure we got the task directory for the task within that run
     assert len(full_task_dir_paths) == 1
-    task_dir = full_task_dir_paths[0]
+    init_task_dir = full_task_dir_paths[0]
 
     # at this point, we expect a single run, with a single task which is ready for submission
     runs = store.get_runs()
@@ -105,13 +111,52 @@ def test_successful_run_lifecycle():
     assert len(tasks) == 1
 
     # notify the store that the task started and then completed successfully
-    store.task_started(task_dir, "node01")
+    store.task_started(init_task_dir, "node01")
     runs = store.get_runs()
     assert runs[0]['status']['STARTED'] == 1
 
-    store.task_completed(task_dir)
+    # create a "worker" task and a "gather" task
+
+    task_definition_path = run_dir+"/tasks/task_dir.txt"
+    #os.mkdir(run_dir+"/tasks")
+    with open(task_definition_path, "w") as fd:
+        fd.write("1 tasks/1\n2 tasks/gather\n")
+    worker_task_dir = run_dir+"/tasks/1"
+    gather_task_dir = run_dir+"/tasks/gather"
+
+    store.taskset_created(run_dir, task_definition_path)
+
+    store.task_completed(init_task_dir)
     runs = store.get_runs()
     assert runs[0]['status']['COMPLETED'] == 1
+
+    tasks = store.get_run_tasks(run_dir)
+    check_task_status(tasks, {"scatter": "COMPLETED", "1": "WAITING", "gather": "WAITING"})
+
+    wingman.update_waiting_tasks(store)
+    tasks = store.get_run_tasks(run_dir)
+    check_task_status(tasks, {"scatter": "COMPLETED", "1": "READY", "gather": "WAITING"})
+
+    store.task_started(worker_task_dir, "node01")
+    wingman.update_waiting_tasks(store)
+    tasks = store.get_run_tasks(run_dir)
+    check_task_status(tasks, {"scatter": "COMPLETED", "1": "STARTED", "gather": "WAITING"})
+
+    store.task_completed(worker_task_dir)
+    tasks = store.get_run_tasks(run_dir)
+    check_task_status(tasks, {"scatter": "COMPLETED", "1": "COMPLETED", "gather": "WAITING"})
+
+    wingman.update_waiting_tasks(store)
+    tasks = store.get_run_tasks(run_dir)
+    check_task_status(tasks, {"scatter": "COMPLETED", "1": "COMPLETED", "gather": "READY"})
+
+    store.task_started(gather_task_dir, "node01")
+    tasks = store.get_run_tasks(run_dir)
+    check_task_status(tasks, {"scatter": "COMPLETED", "1": "COMPLETED", "gather": "STARTED"})
+
+    store.task_completed(gather_task_dir)
+    tasks = store.get_run_tasks(run_dir)
+    check_task_status(tasks, {"scatter": "COMPLETED", "1": "COMPLETED", "gather": "COMPLETED"})
 
     # now make sure we can clean up the run by deleting it
     store.delete_run(run_dir)

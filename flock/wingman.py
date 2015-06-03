@@ -521,7 +521,7 @@ class TaskStore:
                        [run_id])
             for number, status, count in db.fetchall():
                 record = result[number]
-                as_map[number][status] += count
+                as_map[number][status_code_to_name[status]] += count
                 if status in [COMPLETED]:
                     record[0] += 1
                 elif status in [KILLED, FAILED, PREREQ_FAILED, QUOTA_EXCEEDED]:
@@ -531,7 +531,7 @@ class TaskStore:
                 else:
                     record[2] += 1
 
-        log.warn("count_tasks_by_group_number(%r): as_map=%r, result=%r", run_id, as_map, result)
+        log.warn("count_tasks_by_group_number(%r): as_map=%r, result=%r", run_id, dict([(k, dict(v)) for k,v in as_map.items()]), dict(result))
         return result
 
     def get_config_path(self, run_id):
@@ -598,30 +598,23 @@ def identify_tasks_which_disappeared(store, queue):
     external_id_to_task_dir = dict(store.find_tasks_external_id_by_status(KILL_SUBMITTED))
     update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, KILLED)
 
-def submit_created_tasks(listener, store, queue_factory, max_submitted):
-    submitted_count = len(store.find_tasks_by_status(SUBMITTED))
-
-    # process all the waiting to make sure they've met their requirements
-    count_cache = {}
+def update_waiting_tasks(store):
     waiting_tasks = store.find_tasks_by_status(WAITING)
     log.info("Found %d WAITING tasks", len(waiting_tasks))
     for run_id, task_dir, group in waiting_tasks:
-        if not (run_id in count_cache):
-            counts_per_run = store.count_tasks_by_group_number(run_id)
-            count_cache[run_id] = counts_per_run
-
-        counts_by_group = count_cache[run_id]
+        counts_by_group = store.count_tasks_by_group_number(run_id)
 
         # check to make sure that we've completed everything in groups earlier then this one
         prereq_finished = True
         prereq_failed = False
         for other_group, counts in counts_by_group.items():
+            if other_group >= group:
+                continue
             finished_count, failed_count, running_count, waiting_count = counts
-            if other_group < group:
-                if failed_count > 0:
-                    prereq_failed = True
-                elif running_count > 0 or waiting_count > 0:
-                    prereq_finished = False
+            if failed_count > 0:
+                prereq_failed = True
+            elif running_count > 0 or waiting_count > 0:
+                prereq_finished = False
 
         if prereq_failed:
             store.set_task_status(task_dir, PREREQ_FAILED)
@@ -630,6 +623,12 @@ def submit_created_tasks(listener, store, queue_factory, max_submitted):
             store.set_task_status(task_dir, READY)
         else:
             log.debug("Could not run %s because needs to wait for another job", task_dir)
+
+def submit_created_tasks(listener, store, queue_factory, max_submitted):
+    submitted_count = len(store.find_tasks_by_status(SUBMITTED))
+
+    # process all the waiting to make sure they've met their requirements
+    update_waiting_tasks(store)
 
     # submit any ready tasks
     submit_count = max(0, max_submitted-submitted_count)
