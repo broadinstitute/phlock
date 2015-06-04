@@ -72,15 +72,31 @@
 {% endblock %}
 
 {% block content %}
-    <form>
-        Project runs into configuration space:
-        <select name="config_name">
-            <option value="">None</option>
-        {% for name in config_names %}
-            <option value="{{ name }}">{{ name }}</option>
-        {% endfor %}
-        </select>
-        <input type="submit" value="Project" class="btn">
+    <form class="form-inline">
+        <div class="form-group">
+           <label for="archive_name">View</label>
+
+            <select id="archive_name" name="archive_name" class="form-control">
+                <option value="">None</option>
+            {% for this_archive_name in archive_names %}
+                <option value="{{ this_archive_name }}" {% if archive_name == this_archive_name %} selected {% endif %} >{{ this_archive_name }}</option>
+            {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+           <label for="config_name">with projection</label>
+
+
+            <select id="config_name" name="config_name" class="form-control">
+                <option value="">None</option>
+                {% for name in config_names %}
+                    <option {% if config_name == name %} selected {% endif %} value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <input type="submit" value="Apply" class="btn">
 
         {% for tag in current_filter_tags %}
             <input type="hidden" name="tag" value="{{ tag }}">
@@ -88,16 +104,10 @@
     </form>
 
     <form>
-        <select name="archive_name">
-        {% for this_archive_name in archive_names %}
-            <option value="{{ this_archive_name }}" {% if archive_name == this_archive_name %} selected {% endif %} >{{ this_archive_name }}</option>
-        {% endfor %}
-        </select>
-        <input type="submit" value="View archive" class="btn">
     </form>
 
-    <form>
-        {% if current_filter_tags|length > 0 %}
+ <form class="form-inline">
+     {% if current_filter_tags|length > 0 %}
             Applied filters
             <ul>
                 {% for tag in current_filter_tags %}
@@ -107,14 +117,22 @@
             </ul>
             <p></p><a href="/job-dashboard">Reset filters</a></p>
         {% endif %}
-        Add filter
-        <select name="tag">
-        {% for tag in tags %}
-            <option value="{{ tag }}">{{ tag }}</option>
-        {% endfor %}
-        </select>
+
+
+
+        <div class="form-group">
+           <label for="tag">Add filter</label>
+
+            <select id="tag" name="tag" class="form-control">
+            {% for tag in tags %}
+                <option value="{{ tag }}">{{ tag }}</option>
+            {% endfor %}
+            </select>
+        </div>
+
         <input type="submit" value="Add" class="btn">
         <input type="hidden" name="config_name" value="{{ config_name }}">
+        <input type="hidden" name="archive_name" value="{{ archive_name }}">
     </form>
 
     {% if config_name != "" %}
@@ -162,9 +180,11 @@
             <th>
                 <!-- re-run -->
             </th>
-            <th>
-                State
-            </th>
+            {% if archive_name == None %}
+                <th>
+                    State
+                </th>
+            {% endif %}
             {% for c in column_names %}
                 <th>
                     {{ c }}
@@ -196,11 +216,13 @@
                     <a href="/submit-batch-job-form?parameter_hash={{ j.parameters.parameter_hash }}" class="btn"><span class="glyphicon glyphicon-repeat"></span></a>
                     {% endif %}
                 </td>
-                <td>
-                    {% if not (j.status == None) %}
-                    <div style="width:100; height:100" class="status_fig" title='{{ j.status|tojson }}'></div>
+                    {% if archive_name == None %}
+                    <td>
+                        {% if not (j.status == None) %}
+                            <div style="width:100; height:100" class="status_fig" title='{{ j.status|tojson }}'></div>
+                        {% endif %}
+                    </td>
                     {% endif %}
-                </td>
                 {% for c in column_names %}
                     <td>
                         {{ j.parameters[c] }}

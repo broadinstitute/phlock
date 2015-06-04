@@ -139,12 +139,18 @@ def flatten(records, existing_jobs_status):
     jobs = []
     for k, ref, existing_jobs in records:
         if len(existing_jobs) == 0:
+            ref["projstat"] = "missing"
             jobs.append(Job(None, ref, None))
         else:
             for existing_job in existing_jobs:
                 run_id = existing_job["run_id"]
                 status = existing_jobs_status[run_id]
-                jobs.append(Job(run_id, existing_job, existing_jobs_status[run_id]))
+                if len(existing_jobs) == 1:
+                    rstat = "existing"
+                else:
+                    rstat = "duplicate"
+                existing_job["projstat"] = rstat
+                jobs.append(Job(run_id, existing_job, status))
     return jobs
 
 def from_existing(existing_jobs):

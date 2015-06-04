@@ -490,9 +490,14 @@ def job_dashboard():
 
     filter_tags = request.values.getlist("tag")
     config_name = request.values.get("config_name")
+    if config_name == "":
+        config_name = None
     archive_name = request.values.get("archive_name")
+    if archive_name == "":
+        archive_name = None
 
     existing_jobs = get_jobs_from_remote(archive_name)
+
     # overlay the tags with 'added_tags'
     for job in existing_jobs:
         added_tags = job['added_tags']
