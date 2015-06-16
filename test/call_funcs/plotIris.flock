@@ -1,0 +1,5 @@
+invoke:
+
+data <- read.csv("test/call_funcs/bezdekIris.data", as.is=T)
+
+flock.run(unique(data$class), task_function="plotClass", sources="test/call_funcs/plot.R", common=data)
