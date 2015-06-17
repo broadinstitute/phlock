@@ -6,86 +6,87 @@
     {{ super() }}
 
     <!--Load the AJAX API-->
-    <link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.1/themes/smoothness/jquery-ui.css" />
+    <link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.1/themes/smoothness/jquery-ui.css"/>
 
     <script type="text/javascript" src="https://www.google.com/jsapi"></script>
     <script type="text/javascript">
 
-      // Load the Visualization API and the piechart package.
-      google.load('visualization', '1.0', {'packages':['corechart']});
+        // Load the Visualization API and the piechart package.
+        google.load('visualization', '1.0', {'packages': ['corechart']});
 
-      // Set a callback to run when the Google Visualization API is loaded.
-      google.setOnLoadCallback(drawChart);
+        // Set a callback to run when the Google Visualization API is loaded.
+        google.setOnLoadCallback(drawChart);
 
-      // Callback that creates and populates a data table,
-      // instantiates the pie chart, passes in the data and
-      // draws it.
-      function drawChart() {
+        // Callback that creates and populates a data table,
+        // instantiates the pie chart, passes in the data and
+        // draws it.
+        function drawChart() {
 
-      // Set chart options
-      var options = {'width':100,
-                     'height':100,
-                     legend: 'none',
-      slices: {
-            0: { color: 'green' },
-            1: { color: 'blue' },
-            2: { color: 'yellow' },
-            3: { color: 'red'},
-            4: { color: "darkblue"},
-            5: { color: "darkred"},
-            6: { color: "gray"},
-          }};
+            // Set chart options
+            var options = {'width': 100,
+                'height': 100,
+                legend: 'none',
+                slices: {
+                    0: { color: 'green' },
+                    1: { color: 'blue' },
+                    2: { color: 'yellow' },
+                    3: { color: 'red'},
+                    4: { color: "darkblue"},
+                    5: { color: "darkred"},
+                    6: { color: "gray"},
+                }};
 
-      $(".status_fig").each(function(i){
-          var node = this;
-          var title = $(node).attr("title");
-          if(title) {
-              var status = JSON.parse(title);
+            $(".status_fig").each(function (i) {
+                var node = this;
+                var title = $(node).attr("title");
+                if (title) {
+                    var status = JSON.parse(title);
 
-              var data = new google.visualization.DataTable();
-              data.addColumn('string', 'State');
-              data.addColumn('number', 'Count');
+                    var data = new google.visualization.DataTable();
+                    data.addColumn('string', 'State');
+                    data.addColumn('number', 'Count');
 
-              var total = 0;
-              for(s in status) {
-                  total += status[s];
-              }
+                    var total = 0;
+                    for (s in status) {
+                        total += status[s];
+                    }
 
-              $(["COMPLETED", "SUBMITTED", "STARTED", "FAILED", "READY", "KILLED"]).each(function(i, s) {
+                    $(["COMPLETED", "SUBMITTED", "STARTED", "FAILED", "READY", "KILLED"]).each(function (i, s) {
 
-                  var c = status[s];
-                  if(c === undefined) {
-                      c = 0;
-                  }
-                  data.addRow([s, c]);
-                  total -= c;
-              } )
-              data.addRow(["Other", total])
+                        var c = status[s];
+                        if (c === undefined) {
+                            c = 0;
+                        }
+                        data.addRow([s, c]);
+                        total -= c;
+                    })
+                    data.addRow(["Other", total])
 
 
-              var chart = new google.visualization.PieChart(node);
-              chart.draw(data, options);
-          }
-      });
-    }
+                    var chart = new google.visualization.PieChart(node);
+                    chart.draw(data, options);
+                }
+            });
+        }
     </script>
 {% endblock %}
 
 {% block content %}
     <form class="form-inline">
         <div class="form-group">
-           <label for="archive_name">View</label>
+            <label for="archive_name">View</label>
 
             <select id="archive_name" name="archive_name" class="form-control">
                 <option value="">None</option>
-            {% for this_archive_name in archive_names %}
-                <option value="{{ this_archive_name }}" {% if archive_name == this_archive_name %} selected {% endif %} >{{ this_archive_name }}</option>
-            {% endfor %}
+                {% for this_archive_name in archive_names %}
+                    <option value="{{ this_archive_name }}" {% if archive_name == this_archive_name %}
+                            selected {% endif %} >{{ this_archive_name }}</option>
+                {% endfor %}
             </select>
         </div>
 
         <div class="form-group">
-           <label for="config_name">with projection</label>
+            <label for="config_name">with projection</label>
 
 
             <select id="config_name" name="config_name" class="form-control">
@@ -103,11 +104,8 @@
         {% endfor %}
     </form>
 
-    <form>
-    </form>
-
- <form class="form-inline">
-     {% if current_filter_tags|length > 0 %}
+    <form class="form-inline">
+        {% if current_filter_tags|length > 0 %}
             Applied filters
             <ul>
                 {% for tag in current_filter_tags %}
@@ -121,12 +119,12 @@
 
 
         <div class="form-group">
-           <label for="tag">Add filter</label>
+            <label for="tag">Add filter</label>
 
             <select id="tag" name="tag" class="form-control">
-            {% for tag in tags %}
-                <option value="{{ tag }}">{{ tag }}</option>
-            {% endfor %}
+                {% for tag in tags %}
+                    <option value="{{ tag }}">{{ tag }}</option>
+                {% endfor %}
             </select>
         </div>
 
@@ -213,16 +211,17 @@
                 </td>
                 <td>
                     {% if j.parameters.parameter_hash %}
-                    <a href="/submit-batch-job-form?parameter_hash={{ j.parameters.parameter_hash }}" class="btn"><span class="glyphicon glyphicon-repeat"></span></a>
+                        <a href="/submit-batch-job-form?parameter_hash={{ j.parameters.parameter_hash }}"
+                           class="btn"><span class="glyphicon glyphicon-repeat"></span></a>
                     {% endif %}
                 </td>
-                    {% if archive_name == None %}
+                {% if archive_name == None %}
                     <td>
                         {% if not (j.status == None) %}
                             <div style="width:100; height:100" class="status_fig" title='{{ j.status|tojson }}'></div>
                         {% endif %}
                     </td>
-                    {% endif %}
+                {% endif %}
                 {% for c in column_names %}
                     <td>
                         {{ j.parameters[c] }}
@@ -276,7 +275,8 @@
     </div>
 
     <!-- Set tag dialog -->
-    <div class="modal fade" id="modal-set-tag-dialog" tabindex="-1" role="dialog" aria-labelledby="set-tag-overrideModalLabel"
+    <div class="modal fade" id="modal-set-tag-dialog" tabindex="-1" role="dialog"
+         aria-labelledby="set-tag-overrideModalLabel"
          aria-hidden="true">
         <div class="modal-dialog">
             <form action="/job-set-tag" method="POST">
@@ -317,7 +317,8 @@
 
 
     <!-- Memory override dialog -->
-    <div class="modal fade" id="modal-mem-override-dialog" tabindex="-1" role="dialog" aria-labelledby="mem-overrideModalLabel"
+    <div class="modal fade" id="modal-mem-override-dialog" tabindex="-1" role="dialog"
+         aria-labelledby="mem-overrideModalLabel"
          aria-hidden="true">
         <div class="modal-dialog">
             <form action="/job-set-mem-override" method="POST">
@@ -372,7 +373,7 @@
                 return JSON.stringify(job_id_list);
             }
 
-            $(".job-name-link").on("click", function() {
+            $(".job-name-link").on("click", function () {
             });
 
             $("#kill-selected").on("click", function () {
