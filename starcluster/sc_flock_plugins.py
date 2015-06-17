@@ -11,6 +11,10 @@ import tempfile
 from string import Template
 import tempfile
 
+def update_etc_hosts(node):
+    tunnel_ip = "127.0.0.1"
+    node.ssh.execute("cp /etc/hosts /tmp/etc_hosts ; (grep -v datasci-dev /tmp/etc_hosts ; echo %s datasci-dev datasci-dev.broadinstitute.org) > /etc/hosts" % tunnel_ip)
+
 class InstallScripts(ClusterSetup):
   def install_scripts(self, node):
     scripts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
