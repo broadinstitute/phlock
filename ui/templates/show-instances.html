@@ -49,11 +49,11 @@
   </table>
 
   <form action="/kill-instances" id="kill-instances-form"  style="display: none">
-    <select id="kill-instance-ids" name="id"></select>
+    <select id="kill-instance-ids" name="id" multiple></select>
   </form>
 
   <form action="/kill-spots" id="kill-spots-form" style="display: none">
-    <select id="kill-spot-ids" name="id"></select>
+    <select id="kill-spot-ids" name="id" multiple></select>
   </form>
 
     <h1>Open spot requests</h1>
@@ -133,7 +133,7 @@
                 $("."+checkboxClass).each(function () {
                     if ($(this).is(":checked")) {
                         var v = this.value;
-                        optionsHtml.push("<option value='"+v+"'></option>");
+                        optionsHtml.push("<option value='"+v+"' selected></option>");
                     }
                 });
                 $("#"+selectId).html(optionsHtml.join())
