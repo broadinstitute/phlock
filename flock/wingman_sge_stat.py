@@ -73,7 +73,7 @@ def reformat(qhost_output, qstat_output):
 
 def get_space_free(path):
     st = os.statvfs(path)
-    free = st.f_bavail * st.f_frsize
+    free = float(st.f_bavail * st.f_frsize)
     return free
 
 class VolumeHistory:
