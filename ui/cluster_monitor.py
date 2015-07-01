@@ -330,7 +330,10 @@ class ClusterManager(object):
         total_procs = 0
         for host in summary["hosts"]:
             procs = host['num_proc']
-            total_load += min(procs, host["load_avg"])
+            load_avg = 0.0
+            if host["load_avg"] == None:
+              load_avg = host["load_avg"]
+            total_load += min(procs, load_avg)
             total_procs += procs
         if total_load / total_procs < self.monitor_parameters.load_warning_threshold:
             self.alerter.alert("load-too-low", "total_load=%s, total_procs=%s, load_warning_threshold=%s" % (total_load, total_procs, self.monitor_parameters.load_warning_threshold))
