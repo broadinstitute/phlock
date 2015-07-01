@@ -104,12 +104,43 @@
         </div>
 
         <div class="form-group">
+            <label for="load_warning_threshold" class="col-sm-3 control-label">
+                Warn if load fraction is less than this
+            </label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="load_warning_threshold" name="load_warning_threshold"
+                       value="{{ param.load_warning_threshold }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="min_free_space" class="col-sm-3 control-label">
+                Warn if a volume has less than this free
+            </label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="min_free_space" name="min_free_space"
+                       value="{{ param.min_free_space }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="min_minutes_until_exhaustion" class="col-sm-3 control-label">
+                Warn if volume projected to fill in fewer minutes
+            </label>
+
+            <div class="col-sm-3">
+                <input type="text" class="form-control" id="min_minutes_until_exhaustion" name="min_minutes_until_exhaustion"
+                       value="{{ param.min_minutes_until_exhaustion }}">
+            </div>
+        </div>
+
+        <div class="form-group">
             <div class="col-sm-offset-3 col-sm-10">
                 <button name="submit" type="submit" class="btn btn-default">Update</button>
             </div>
         </div>
-
-
 
     </form>
 

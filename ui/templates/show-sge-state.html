@@ -21,7 +21,9 @@
       	  {{ v.free | format_disk_space }}
       	</td>
       	<td>
+      	  {% if v.minutesUntilExhaustion %}
       	  {{ v.minutesUntilExhaustion | format_minutes }}
+      	  {% endif %}
       	</td>
       </tr>
       {% endfor %}

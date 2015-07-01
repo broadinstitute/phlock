@@ -26,6 +26,9 @@ class Parameters:
         self.ignore_grp = ignore_grp
         self.reserve_node_timeout = 60
         self.reserve_nodes = 1
+        self.load_warning_threshold = 0.75
+        self.min_free_space = 1e6
+        self.min_minutes_until_exhaustion = 60
 
     def get_total_spot_bid(self):
         cpus = cpus_per_instance[self.instance_type]
@@ -107,7 +110,7 @@ class Mailbox(object):
         self.cv.release()
 
 class ClusterManager(object):
-    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file, sdbc, wingman_service_factory, state_log_path):
+    def __init__(self, monitor_parameters, cluster_name, cluster_template, terminal, cmd_prefix, clusterui_identifier, ec2, loadbalance_pid_file, sdbc, wingman_service_factory, state_log_path, alerter):
         super(ClusterManager, self).__init__()
         self.manager_state = CM_STOPPED
         self.requested_stop = False
@@ -128,7 +131,9 @@ class ClusterManager(object):
         self.sdbc = sdbc
         self.restart_times = []
         self.wingman_service_factory = wingman_service_factory
-        self.state_log_path =state_log_path
+        self.state_log_path = state_log_path
+        self._get_host_state_failures = 0
+        self.alerter = alerter
 
     def start_manager(self):
         # make sure we don't try to have two running manager threads
@@ -320,6 +325,28 @@ class ClusterManager(object):
         log.debug("Take cluster state snapshot")
         self._log_cluster_state()
 
+    def _alert_if_nodes_idle(self, summary):
+        total_load = 0
+        total_procs = 0
+        for host in summary["hosts"]:
+            procs = host['num_proc']
+            total_load += min(procs, host["load_avg"])
+            total_procs += procs
+        if total_load / total_procs < self.monitor_parameters.load_warning_threshold:
+            self.alerter.alert("load-too-low", "total_load=%s, total_procs=%s, load_warning_threshold=%s" % (total_load, total_procs, self.monitor_parameters.load_warning_threshold))
+
+    def _alert_if_diskspace_low(self, summary):
+        for volume in summary['volumes']:
+            free = volume['free']
+            minutesUntilExhaustion = volume['minutesUntilExhaustion']
+            name = volume['name']
+            if free < self.monitor_parameters.min_free_space or (not (minutesUntilExhaustion is None) and minutesUntilExhaustion < self.monitor_parameters.min_minutes_until_exhaustion ):
+                self.alerter.alert("space-too-low-"+name, "name=%s free=%s minutesUntilExhaustion=%s"%(name, free, minutesUntilExhaustion))
+
+    def _alert(self, name, details):
+        #TODO: change this to send an email
+        log.error("Alert: %s, %s" % (name, details))
+
     def _log_cluster_state(self):
         import ui
 
@@ -338,7 +365,18 @@ class ClusterManager(object):
             host_summary = wingman_service.get_host_summary()
         except Exception, e:
             log.exception("Exception occurred trying to get host summary.  Skipping update to log.")
+
+            # however if we're consistently getting failures, eventually bail because we need the summary to make
+            # sure the cluster is OK
+            self._get_host_state_failures += 1
+            if self._get_host_state_failures > 5:
+                raise
             return
+
+        self._get_host_state_failures = 0
+
+        self._alert_if_nodes_idle(host_summary)
+        self._alert_if_diskspace_low(host_summary)
 
         running_jobs = 0
         for host in host_summary["hosts"]:

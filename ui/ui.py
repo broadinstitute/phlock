@@ -29,6 +29,7 @@ from instance_types import cpus_per_instance
 import batch_submit
 import json
 import base64
+import alert
 
 oid = OpenID()
 terminal_manager = term.TerminalManager()
@@ -56,18 +57,22 @@ def load_starcluster_config(app_config):
     if the include section exist, process it
     """
     if config.has_option("global", "include"):
-        try:
-            include_paths = config.get("global", "include")
-            include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
-            for path in include_paths:
-                config.read(path)
-        except ConfigParser.NoOptionError:
-            pass
+        include_paths = config.get("global", "include")
+        include_paths = [os.path.expanduser(x) for x in include_paths.split(" ")]
+        for path in include_paths:
+            config.read(path)
 
     app_config['AWS_ACCESS_KEY_ID'] = config.get("aws info", "AWS_ACCESS_KEY_ID")
     app_config['AWS_SECRET_ACCESS_KEY'] = config.get("aws info", "AWS_SECRET_ACCESS_KEY")
     if not ("CLUSTER_TEMPLATE" in app_config):
         app_config["CLUSTER_TEMPLATE"] = config.get("global", "DEFAULT_TEMPLATE")
+
+    app_config['SNS_TOPIC'] = config.get("plugin deadmansSwitch", "topic")
+
+    if not config.has_option("plugin deadmansSwitch", "region"):
+        app_config['SNS_REGION'] = 'us-east-1'
+    else:
+        app_config['SNS_REGION'] = config.get("plugin deadmansSwitch", "region")
 
     try:
         dns_prefix = convert_to_boolean("DNS_PREFIX", config.get("cluster %s" % app_config["CLUSTER_TEMPLATE"], "DNS_PREFIX"))
@@ -821,6 +826,9 @@ def set_monitor_parameters():
     monitor_parameters.reserve_node_timeout = int(values["reserve_node_timeout"])
     monitor_parameters.reserve_nodes = int(values["reserve_nodes"])
     monitor_parameters.ignore_grp = "ignore_grp" in values
+    monitor_parameters.load_warning_threshold = float(values['load_warning_threshold'])
+    monitor_parameters.min_free_space = float(values['min_free_space'])
+    monitor_parameters.min_minutes_until_exhaustion = float(values['min_minutes_until_exhaustion'])
 
     print "ignore_grp", monitor_parameters.ignore_grp
 
@@ -984,6 +992,7 @@ def init_manager():
 
     cluster_terminal = terminal_manager.start_named_terminal("Cluster monitor", log_file=log_file)
     instance_id = "host=%s, pid=%d" % (socket.getfqdn(), os.getpid())
+    alerter = alert.Alerter(config['AWS_ACCESS_KEY_ID'], config['AWS_SECRET_ACCESS_KEY'], config['SNS_REGION'], config['SNS_TOPIC'])
     cluster_manager = cluster_monitor.ClusterManager(monitor_parameters,
                                                      config['CLUSTER_NAME'],
                                                      config["CLUSTER_TEMPLATE"],
@@ -994,7 +1003,8 @@ def init_manager():
                                                      config['LOADBALANCE_PID_FILE'],
                                                      get_sdbc_connection(),
                                                      get_wingman_service_factory(),
-                                                     config["MONITOR_JSON_LOG"])
+                                                     config["MONITOR_JSON_LOG"],
+                                                     alerter)
 
 if __name__ == "__main__":
     import trace_on_demand
