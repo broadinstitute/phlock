@@ -134,7 +134,7 @@ class VolumeHistory:
         self.lock.release()
         return stats
 
-def get_host_summary(volumes):
+def get_host_summary():
     qhost_output = subprocess.check_output(["qhost", "-xml"])
     qstat_output = subprocess.check_output(["qstat", "-xml"])
     return reformat(qhost_output, qstat_output)
