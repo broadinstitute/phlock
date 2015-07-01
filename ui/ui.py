@@ -182,6 +182,35 @@ def create_or_login(resp):
     flask.session['email'] = resp.email
     return redirect_with_success("successfully signed in", oid.get_next_url())
 
+@app.template_filter("format_disk_space")
+def format_disk_space(amount):
+    mb = float(1024*1024)
+    gb = 1024*mb
+    if amount > gb:
+      amount = amount/gb
+      suffix = "GB"
+    elif amount > mb:
+      amount = amount/mb
+      suffix = "MB"
+    else:
+      amount = amount/1024
+      suffix = "KB"
+    return u'{0:.3f}{1}'.format(amount, suffix)
+
+@app.template_filter("format_minutes")
+def format_minutes(amount):
+    day = 60*24
+    hour = 60 
+    if amount > day:
+      suffix = "days"
+      amount = amount/day
+    elif amount > hour:
+      suffix = "hours"
+      amount = amount/hour
+    else:
+      suffix = "minutes"
+    return u'{0:.3f} {1}'.format(amount, suffix)
+                
 @app.route('/login', methods=['GET', 'POST'])
 @oid.loginhandler
 def login():
@@ -301,7 +330,6 @@ def show_terminal(id):
         flask.abort(404)
 
     return flask.render_template("show_terminal.html", terminal=terminal)
-
 
 @app.route("/terminal-json/<id>")
 def terminal_json(id):

@@ -6,6 +6,27 @@
 
   <h1>Jobs in queue: {{ jobs_in_queue }}</h1>
 
+  <h2>Volumes</h2>
+  <table class="table">
+    <thead>
+      <tr><th>Name</th><th>Free</th><th>minutesUntilExhaustion</th></tr>
+    </thead>
+    <tbody>
+      {% for v in volumes %}
+      <tr>
+      	<td>
+      	  {{ v.name }}
+      	</td>
+      	<td>
+      	  {{ v.free | format_disk_space }}
+      	</td>
+      	<td>
+      	  {{ v.minutesUntilExhaustion | format_minutes }}
+      	</td>
+      </tr>
+      {% endfor %}
+     </tbody>
+   </table>
 
   <table class="table">
     <thead>
