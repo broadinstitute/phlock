@@ -137,14 +137,8 @@ class VolumeHistory:
 def get_host_summary(volumes):
     qhost_output = subprocess.check_output(["qhost", "-xml"])
     qstat_output = subprocess.check_output(["qstat", "-xml"])
-    summary = reformat(qhost_output, qstat_output)
+    return reformat(qhost_output, qstat_output)
 
-    volume_free_space = {}
-    for volume in volumes:
-      free = get_space_free(volume)
-      volume_free_space.append( {"path": volume, "free":free} )
-    summary['volumes'] = volume_free_space
-    return summary
 
 if __name__ == "__main__":
     h = VolumeHistory()
