@@ -182,7 +182,7 @@ class TaskStore:
         upgrade_db(db_path)
 
         self._archive_path = os.path.join(os.path.dirname(db_path), "archived")
-        self._volumes_to_watch = os.path.dirname(db_path)
+        self._volumes_to_watch = [os.path.dirname(db_path)]
         self._connection = sqlite3.connect(db_path, check_same_thread=False)
         self._lock = threading.Lock()
         THREAD_LOCALS._active_transaction = None
