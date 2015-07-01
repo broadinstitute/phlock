@@ -177,10 +177,12 @@ class TaskStore:
     def __init__(self, db_path, flock_home, endpoint_url):
         self.flock_home = flock_home
         self.endpoint_url = endpoint_url
+        self.volume_history = wingman_sge_stat.VolumeHistory()
 
         upgrade_db(db_path)
 
         self._archive_path = os.path.join(os.path.dirname(db_path), "archived")
+        self._volumes_to_watch = os.path.dirname(db_path)
         self._connection = sqlite3.connect(db_path, check_same_thread=False)
         self._lock = threading.Lock()
         THREAD_LOCALS._active_transaction = None
@@ -191,6 +193,15 @@ class TaskStore:
         if (not hasattr(THREAD_LOCALS, "_active_transaction")) or THREAD_LOCALS._active_transaction is None:
             THREAD_LOCALS._active_transaction = TransactionContext(self._connection, self._lock)
         return THREAD_LOCALS._active_transaction
+
+    def update_volume_history(self):
+        for volume in self._volumes_to_watch:
+            self.volume_history.update(volume)
+
+    def get_host_summary(self):
+        summary = wingman_sge_stat.get_host_summary()
+        summary['volumes'] = self.volume_history.get_volume_stats()
+        return summary
 
     # TODO: Switch this to look up runs by name, not run_dir
     def get_run_tasks(self, run_dir):
@@ -669,6 +680,8 @@ def main_loop(endpoint_url, flock_home, store, max_submitted, localQueue = False
     # periodic tasks
     while True:
         try:
+            store.update_volume_history()
+            
             store.mark_stale_missing_tasks_as_failed()
 
             needed_to_kill_tasks = handle_kill_pending_tasks(store, t_queue)
@@ -728,9 +741,8 @@ def main():
     print "Listening on port %d..." % port
     for method in ["get_run_files", "get_file_content", "delete_run", "retry_run", "kill_run", "run_created", "run_submitted", "taskset_created", "task_submitted", "task_started",
                    "task_failed", "task_completed", "node_disappeared", "get_version", "get_runs", "set_required_mem_override",
-                   "get_run_tasks", "get_run", "set_tag", "archive_run", "list_archives"]:
+                   "get_run_tasks", "get_run", "set_tag", "archive_run", "list_archives", "get_host_summary"]:
         server.register_function(make_function_wrapper(getattr(store, method)), method)
-    server.register_function(make_function_wrapper(wingman_sge_stat.get_host_summary), "get_host_summary")
 
     server.serve_forever()
 
