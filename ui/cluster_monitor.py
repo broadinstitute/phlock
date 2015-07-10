@@ -330,6 +330,8 @@ class ClusterManager(object):
         total_procs = 0
         for host in summary["hosts"]:
             procs = host['num_proc']
+            if procs == None:
+              procs = 0
             load_avg = 0.0
             if host["load_avg"] != None:
               load_avg = host["load_avg"]
