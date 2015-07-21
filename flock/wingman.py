@@ -18,6 +18,7 @@ import hashlib
 import collections
 import wingman_sge_stat
 import shutil
+import trace_on_demand
 
 log = logging.getLogger("monitor")
 
@@ -711,6 +712,7 @@ def make_function_wrapper(fn):
 import argparse
 
 def main():
+    trace_on_demand.install()
     FORMAT = "[%(asctime)-15s] %(message)s"
     logging.basicConfig(format=FORMAT, level=logging.INFO, datefmt="%Y%m%d-%H%M%S")
 
