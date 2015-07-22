@@ -2,6 +2,7 @@ import os
 import sqlite3
 import __init__ as flock
 from SimpleXMLRPCServer import SimpleXMLRPCServer
+from SocketServer import ThreadingMixIn
 import logging
 import threading
 import socket
@@ -711,6 +712,9 @@ def make_function_wrapper(fn):
 
 import argparse
 
+class ThreadedXMLRPCServer(ThreadingMixIn, SimpleXMLRPCServer):
+    pass
+
 def main():
     trace_on_demand.install()
     FORMAT = "[%(asctime)-15s] %(message)s"
@@ -737,7 +741,7 @@ def main():
 
     main_loop_thread = threading.Thread(target=lambda: main_loop(endpoint_url, flock_home, store, args.maxsubmitted, localQueue=(queue == 'local')))
     main_loop_thread.daemon = True
-    server = SimpleXMLRPCServer(("0.0.0.0", port), allow_none=True)
+    server = ThreadedXMLRPCServer(("0.0.0.0", port), allow_none=True)
     main_loop_thread.start()
 
     print "Listening on port %d..." % port
