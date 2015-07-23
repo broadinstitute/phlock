@@ -115,8 +115,6 @@
             <p></p><a href="/job-dashboard">Reset filters</a></p>
         {% endif %}
 
-
-
         <div class="form-group">
             <label for="tag">Add filter</label>
 
@@ -131,6 +129,10 @@
         <input type="hidden" name="config_name" value="{{ config_name }}">
         <input type="hidden" name="archive_name" value="{{ archive_name }}">
     </form>
+
+    {% if hidden_tags|length >0 %}
+        Hidden: {% for tag in hidden_tags %} <button class="btn">{{ tag }} <span class="glyphicon glyphicon-remove"></span></button> {% endfor %}
+    {% endif %}
 
     {% if config_name != "" %}
         <h1>Jobs in "{{ config_name }}"</h1>

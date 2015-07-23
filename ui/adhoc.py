@@ -20,7 +20,9 @@ def cartesian_product(options):
         return [{}]
 
     k = options.keys()[0]
-    for v in options[k]:
+    values = options[k]
+    assert type(values) == list
+    for v in values:
         rows.append({k:v})
 
     if len(options) == 1:

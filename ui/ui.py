@@ -442,9 +442,12 @@ def get_run_files_path(run_name):
 
 @app.template_filter('job_json_params')
 def job_json_params(j):
-    p = dict(j.parameters)
-    if "projstat" in p:
-        del p['projstat']
+    p = {}
+    for k, v in j.parameters.items():
+        if k in ["projstat"]:
+            continue
+        p[k] = [v]
+
     return json.dumps([p])
 
 @app.route("/run/<run_name>")
@@ -458,7 +461,6 @@ def show_run(run_name):
         return t
     tasks = [rewrite_task(t) for t in tasks]
     return flask.render_template("show-run.html", run_name=run_name, tasks=tasks)
-
 
 @app.route("/list-run-files/<run_name>", defaults=dict(file_path=""))
 @app.route("/list-run-files/<run_name>/<path:file_path>")
@@ -526,6 +528,23 @@ def load_projections():
 
 @app.route("/job-dashboard")
 def job_dashboard():
+    hidden_tags = []
+    if "hidden_tags" in flask.session:
+        hidden_tags = flask.session["hidden_tags"]
+
+    tag_to_unhide = request.values.get("unhide_tag")
+    if tag_to_unhide in hidden_tags:
+        hidden_tags.remove(tag_to_unhide)
+        flask.session["hidden_tags"] = hidden_tags
+        flask.session.modified=True
+
+    tag_to_hide = request.values.get("hide_tag")
+    print "tag_to_hide=",tag_to_hide
+    if not (tag_to_hide in hidden_tags):
+        hidden_tags.append(tag_to_hide)
+        flask.session["hidden_tags"] = hidden_tags
+        flask.session.modified=True
+
     projections = load_projections()
 
     filter_tags = request.values.getlist("tag")
@@ -580,7 +599,12 @@ def job_dashboard():
     fixed_values, column_names = adhoc.factor_out_common(summary)
     tag_universe = adhoc.get_all_tags(summary)
 
+    print "hidden_tags",hidden_tags
+
+    column_names = [x for x in column_names if not (x in hidden_tags)]
+
     return flask.render_template("job-dashboard.html", jobs=flattened,
+                                 hidden_tags=hidden_tags,
                                  column_names=column_names, tags=tag_universe,
                                  fixed_values=fixed_values.items(), current_filter_tags=filter_tags,
                                  config_name=config_name, config_names=projections.keys(),
