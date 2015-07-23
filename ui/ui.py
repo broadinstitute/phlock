@@ -440,6 +440,13 @@ def get_jobs_from_remote(archive_name=None):
 def get_run_files_path(run_name):
     return config['TARGET_ROOT'] + "/" + run_name + "/files"
 
+@app.template_filter('job_json_params')
+def job_json_params(j):
+    p = dict(j.parameters)
+    if "projstat" in p:
+        del p['projstat']
+    return json.dumps([p])
+
 @app.route("/run/<run_name>")
 def show_run(run_name):
     run_dir = get_run_files_path(run_name)
@@ -540,6 +547,7 @@ def job_dashboard():
             job["parameters"][k] = v
 
     archive_names = get_wingman_service().list_archives()
+    archive_names = [ "" if x is None else x for x in archive_names ]
     archive_names.sort()
 
     if config_name == "" or config_name == None:
@@ -690,7 +698,9 @@ def get_sha(repo, branch):
 def submit_batch_job_form():
     parameters = {'repo':"ssh://git@stash.broadinstitute.org:7999/cpds/atlantis.git", 'branch':"refs/heads/master"}
 
-    if "parameter_hash" in request.values:
+    if "config_defs" in request.values:
+        parameters['config_defs'] = json.loads(request.values['config_defs'])
+    elif "parameter_hash" in request.values:
         hash = str(request.values["parameter_hash"])
 
         m = shelve.open(config["SUBMISSION_HISTORY"])
@@ -699,6 +709,9 @@ def submit_batch_job_form():
             parameters = json.loads(parameters_json)
         else:
             flask.flash("Could not find parameters", 'danger')
+
+    if 'config_defs' in parameters:
+        parameters['config_defs_str'] = json.dumps(parameters['config_defs'], indent=2)
 
 
     return flask.render_template("submit-batch-job-form.html", **parameters)

@@ -77,7 +77,6 @@
             <label for="archive_name">View</label>
 
             <select id="archive_name" name="archive_name" class="form-control">
-                <option value="">None</option>
                 {% for this_archive_name in archive_names %}
                     <option value="{{ this_archive_name }}" {% if archive_name == this_archive_name %}
                             selected {% endif %} >{{ this_archive_name }}</option>
@@ -213,6 +212,9 @@
                     {% if j.parameters.parameter_hash %}
                         <a href="/submit-batch-job-form?parameter_hash={{ j.parameters.parameter_hash }}"
                            class="btn"><span class="glyphicon glyphicon-repeat"></span></a>
+                    {% else %}
+                        <a href="/submit-batch-job-form?config_defs={{ j|job_json_params }}"
+                           class="btn"><span class="glyphicon glyphicon-play-circle"></span></a>
                     {% endif %}
                 </td>
                 {% if archive_name == None %}

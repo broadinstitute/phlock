@@ -24,7 +24,7 @@
             <label for="config_defs" class="col-sm-3 control-label">config_defs</label>
 
             <div class="col-sm-8">
-                <textarea class="form-control" id="config_defs" name="config_defs">{% if config_defs %}{{ config_defs|tojson }}{% endif %}</textarea>
+                <textarea class="form-control" id="config_defs" name="config_defs" rows="10">{% if config_defs_str %}{{ config_defs_str }}{% endif %}</textarea>
             </div>
         </div>
 
