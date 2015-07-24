@@ -396,9 +396,8 @@ class TaskStore:
 
             # a bit of a hack: We actually store the runs in a path like .../20150101-100101/files.  However, it's preferable to get the parent which contains the config.json and
             # maybe other small files
-            run_dir = os.path.dirname(run_dir)
             if os.path.exists(run_dir):
-                new_run_dir = os.path.join(self._archive_path, archive_name, os.path.basename(run_dir))
+                new_run_dir = os.path.join(self._archive_path, archive_name, os.path.basename(run_dir), "files")
             else:
                 if archive_name == "trash":
                     new_run_dir = None
@@ -408,9 +407,9 @@ class TaskStore:
             db.execute("DELETE FROM TASKS WHERE run_id = ?", [run_id])
 
             if new_run_dir != None:
-                log.warn("renaming %s to %s, name=%s" % (run_dir, new_run_dir, run_name))
+                log.warn("renaming %s to %s, name=%s" % (os.path.dirname(run_dir), os.path.dirname(new_run_dir), run_name))
                 db.execute("UPDATE RUNS SET archive_name = ?, run_dir = ? WHERE run_id = ?", [archive_name, new_run_dir, run_id])
-                os.renames(run_dir, new_run_dir)
+                os.renames(os.path.dirname(run_dir), os.path.dirname(new_run_dir))
                 return new_run_dir
             else:
                 log.warn("deleting run %s from db (%s does not exist)", run_id, run_dir)
