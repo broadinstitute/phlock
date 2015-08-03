@@ -120,10 +120,13 @@ class AbstractQueue(object):
         return tasks
 
     def clean_task_dir(self, task_full_path):
-        for fn in ["%s/stdout.txt" % task_full_path, "%s/stderr.txt" % task_full_path]:
-            if os.path.exists(fn):
-                for i in xrange(20):
-                    dest = "%s.%d" % (fn, i)
-                    if not os.path.exists(dest):
-                        break
-                os.rename(fn, dest)
+        clean_task_dir(task_full_path)
+
+def clean_task_dir(task_full_path):
+    for fn in ["%s/stdout.txt" % task_full_path, "%s/stderr.txt" % task_full_path]:
+        if os.path.exists(fn):
+            for i in xrange(20):
+                dest = "%s-%d.txt" % (fn[:-4], i+1)
+                if not os.path.exists(dest):
+                    break
+            os.rename(fn, dest)
