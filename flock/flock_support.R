@@ -24,12 +24,21 @@ flock.run <- function(inputs,
   }
 
   task.dir <- 'tasks';
+  task.dir.try <- 0
+  full.task.dir <- paste(flock_run_dir, '/', task.dir, sep='')
+  while(file.exists(full.task.dir)) {
+    stopifnot(task.dir.try < 100)
+    task.dir.try <- task.dir.try + 1
+    task.dir <- paste('tasks-', task.dir.try, sep='')
+    full.task.dir <- paste(flock_run_dir, '/', task.dir, sep='')
+  }
 
-  dir.create(paste(flock_run_dir, '/', task.dir, sep=''), recursive=TRUE);
+  dir.create(full.task.dir, recursive=TRUE);
+
   flock_common_state_file = paste(flock_run_dir, '/',task.dir,'/flock_common_state.Rdata', sep='');
   env_file = paste(flock_run_dir, '/env.sh', sep='')
-  flock_files_to_source <- sources
-  save(flock_common_state, flock_files_to_source, file=flock_common_state_file)
+  flock_files_to_source <- c(paste(script_path, '/flock_support.R', sep=''), sources)
+  save(flock_common_state, flock_files_to_source, flock_notify_command, flock_home, file=flock_common_state_file)
   
   created.jobs <- list()
   submit_command <- function(group, name, cmd) {
@@ -44,7 +53,7 @@ flock.run <- function(inputs,
   id.fmt.str = sprintf("%%0%.0f.0f", ceiling(log(length(inputs))/log(10)));
   flock_job_details = list()
   job.count = length(inputs);
-  if(!is.na(flock_test_job_count)) {
+  if(exists("flock_test_job_count") && !is.na(flock_test_job_count)) {
     job.count = min(flock_test_job_count, job.count)
   }
   for(job.index in 1:job.count) {
@@ -63,7 +72,7 @@ flock.run <- function(inputs,
     flock_completion_file = paste(flock_job_dir, '/finished-time.txt', sep='')
     flock_starting_file = paste(flock_job_dir, '/started-time.txt', sep='')
     save(flock_function_name, flock_starting_file, flock_run_dir, flock_job_dir, flock_input_file, flock_output_file, flock_script_name, flock_per_task_state, flock_completion_file, file=flock_input_file)
-    submit_command('1', paste(job.subdir, '/task.sh', sep=''), paste('set -ex\nsource ',env_file,'\nexec R --vanilla --args ', flock_common_state_file, ' ', flock_input_file, ' < ', script_path, '/execute_task.R', sep=''))
+    submit_command('1', paste(job.subdir, '/task.sh', sep=''), paste('set -ex\nsource ',env_file,'\nexec R --vanilla --args ', script_path, ' ', flock_common_state_file, ' ', flock_input_file, ' < ', script_path, '/execute_task.R', sep=''))
     flock_job_details[[length(flock_job_details)+1]] = list(flock_run_dir=flock_run_dir, flock_job_dir=flock_job_dir, flock_input_file=flock_input_file, flock_output_file=flock_output_file, flock_script_name=flock_script_name, flock_per_task_state=flock_per_task_state)
   }
 
@@ -76,7 +85,7 @@ flock.run <- function(inputs,
     flock_script_name = gather_script_name;
     flock_function_name = gather_function;
     save(flock_function_name, flock_starting_file, flock_run_dir, flock_job_dir, flock_per_task_state, flock_script_name, flock_completion_file, file=gather_input_file)
-    submit_command('2', 'gather/task.sh', paste('set -ex\nsource ',env_file,'\nexec R --vanilla --args ', flock_common_state_file, ' ', gather_input_file, ' < ', script_path, '/execute_task.R', sep=''))
+    submit_command('2', 'gather/task.sh', paste('set -ex\nsource ',env_file,'\nexec R --vanilla --args ', script_path, ' ', flock_common_state_file, ' ', gather_input_file, ' < ', script_path, '/execute_task.R', sep=''))
   }
 
   # write the list of task scripts
