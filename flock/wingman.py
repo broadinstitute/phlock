@@ -393,11 +393,13 @@ class TaskStore:
                 return None
 
             run_id, run_dir, run_name = rows[0]
+            log.warn("Starting rename of run %s (run_dir=%s, name=%s)" % (run_id, run_dir, run_name))
 
+            assert run_dir.endswith("files")
             # a bit of a hack: We actually store the runs in a path like .../20150101-100101/files.  However, it's preferable to get the parent which contains the config.json and
             # maybe other small files
             if os.path.exists(run_dir):
-                new_run_dir = os.path.join(self._archive_path, archive_name, os.path.basename(run_dir), "files")
+                new_run_dir = os.path.join(self._archive_path, archive_name, os.path.basename(os.path.dirname(run_dir)), "files")
             else:
                 if archive_name == "trash":
                     new_run_dir = None
