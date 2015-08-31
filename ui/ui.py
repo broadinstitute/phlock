@@ -1067,6 +1067,10 @@ if __name__ == "__main__":
 
     oid.init_app(app)
     oid.after_login_func = create_or_login
+    def print_error(message):
+      log.error(message)
+      print("OpenID error: %s" % message)
+    oid.errorhandler(print_error)
 
     app.run(host="0.0.0.0", port=app.config['PORT'], debug=app.config['DEBUG'])
 
