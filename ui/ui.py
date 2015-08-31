@@ -227,13 +227,13 @@ def login():
     if 'openid' in flask.session:
         return flask.redirect(oid.get_next_url())
    
-    openid = "https://crowd.broadinstitute.org/openidserver/op"
-    return oid.try_login(openid, ask_for=['email', 'fullname'])
+    return oid.try_login(config["OPENID_URL"], ask_for=['email', 'fullname'])
 
  
- @app.before_request
- def ensure_logged_in_before_request():
-    """ if not (request.endpoint in ['login', 'not_authorized']):
+@app.before_request
+def ensure_logged_in_before_request():
+  if "OPENID_URL" in config:
+    if not (request.endpoint in ['login', 'not_authorized']):
          if 'email' in flask.session:
              if not (flask.session['email'] in config['AUTHORIZED_USERS']):
                 return redirect_with_error("/not_authorized", "You are not authorized to use this application")
@@ -241,8 +241,8 @@ def login():
                  return None
          else:
              return flask.redirect("/login")
-     """
-     return None
+  
+  return None
 
 @app.route("/not_authorized")
 def not_authorized():
@@ -1051,12 +1051,6 @@ if __name__ == "__main__":
     parser.add_argument('--config', dest="config_path", help='config file to use', default=os.path.expanduser("~/.clusterui.config"))
     args = parser.parse_args()
     
-    app.config['BASIC_AUTH_USERNAME'] = 'YOUR_USER_NAME'
-    app.config['BASIC_AUTH_PASSWORD'] = 'YOUR_PASS_WORD'
-    app.config['BASIC_AUTH_FORCE'] = True
-
-
-    basic_auth = BasicAuth(app)
     app.config.update(LOG_FILE='clusterui.log',
                       SUBMISSION_HISTORY="submission_history.shelve",
                       DEBUG=True,
@@ -1071,13 +1065,23 @@ if __name__ == "__main__":
     app.config.update(OPENID_FS_STORE_PATH="/tmp/openid-clusterui-"+app.config['CLUSTER_NAME'])
     load_starcluster_config(app.config)
 
-    oid.init_app(app)
-    oid.after_login_func = create_or_login
+    if "BASIC_AUTH_USERNAME" in app.config:
+      print("Using basic authentication")
+      #app.config['BASIC_AUTH_USERNAME'] = 'YOUR_USER_NAME'
+      #app.config['BASIC_AUTH_PASSWORD'] = 'YOUR_PASS_WORD'
+      app.config['BASIC_AUTH_FORCE'] = True
+      basic_auth = BasicAuth(app)
+    elif "OPENID_URL" in app.config:
+      print("Using OpenID authentication: %s"%app.config["OPENID_URL"])
+      oid.init_app(app)
+      oid.after_login_func = create_or_login
 
-    def print_error(message):
-      log.error(message)
-      print("OpenID error: %s" % message)
-    oid.errorhandler(print_error)
+      def print_error(message):
+        log.error(message)
+        print("OpenID error: %s" % message)
+      oid.errorhandler(print_error)
+    else:
+      raise Exception("Need an authentication method.  Set either BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD or OPENID_URL in config file")
 
     app.run(host="0.0.0.0", port=app.config['PORT'], debug=app.config['DEBUG'])
 
