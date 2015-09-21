@@ -14,7 +14,7 @@ log = logging.getLogger("ui")
 class Parameters:
     def __init__(self, default_instance_type, ignore_grp):
         self.interval=30
-        self.spot_bid=0.01
+        self.spot_bid=0.015
         self.max_to_add=1
         self.max_instances=10
         self.min_instances=1
@@ -26,7 +26,7 @@ class Parameters:
         self.ignore_grp = ignore_grp
         self.reserve_node_timeout = 60
         self.reserve_nodes = 1
-        self.load_warning_threshold = 0.75
+        self.load_warning_threshold = 0.0
         self.min_free_space = 1e6
         self.min_minutes_until_exhaustion = 60
 
