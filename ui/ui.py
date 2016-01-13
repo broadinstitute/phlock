@@ -233,7 +233,17 @@ def login():
 @app.before_request
 def ensure_logged_in_before_request():
   if "OPENID_URL" in config:
-    if not (request.endpoint in ['login', 'not_authorized']):
+      needs_login = True
+
+      print "request endpoint", request.endpoint
+
+      if request.endpoint in ['login', 'not_authorized']:
+          needs_login = False
+
+      if request.endpoint != None and request.endpoint.startswith("api"):
+          needs_login = False
+
+      if needs_login:
          if 'email' in flask.session:
              if not (flask.session['email'] in config['AUTHORIZED_USERS']):
                 return redirect_with_error("/not_authorized", "You are not authorized to use this application")
@@ -784,6 +794,90 @@ def save_submit_parameters(config_defs, template_str, repo, branch, sha):
 
     return parameter_hash
 
+def get_username_from_api_request():
+    print "-"
+    auth = request.headers.get("Authorization")
+    if auth != None and auth.startswith("Bearer "):
+        token = auth[len("Bearer "):]
+        return _get_current_config()["BEARER_TOKENS"][token]
+    flask.abort(401)
+
+@app.route("/api/archive-jobs", methods=["POST"])
+def api_archive_jobs():
+    print ("A")
+    req = request.get_json()
+    print ("A")
+    job_ids = req["job-ids"]
+    print ("A")
+    destination = req["destination"]
+    print ("A")
+
+    assert re.match('^[\w._-]+$', destination) is not None
+
+    print ("A")
+    service = get_wingman_service()
+    for job_name in job_ids:
+        service.archive_run(job_name, destination)
+
+    return flask.jsonify(jobs_moved=len(job_ids))
+
+@app.route("/api/submit-job", methods=["POST"])
+def api_submit_job():
+    req = request.get_json()
+
+    username = get_username_from_api_request()
+
+    template_str = req['template']
+    config_defs = req['config_defs']
+    repo = req['repo']
+    branch = req['branch']
+    sha = get_sha(repo, branch)
+
+    json_and_flock = _prepare_batch_job(username, config_defs, template_str, repo, branch, sha)
+    script_name = _submit_batch_job(json_and_flock, repo, branch, sha)
+
+    log.warn("api_submit_job: Executing {}".format(script_name))
+    p = subprocess.Popen(["bash", script_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    retcode = p.wait()
+    log.warn("api_submit_job: process completed".format(script_name))
+
+    rep = dict(stdout=stdout, stderr=stderr, success=(retcode == 0))
+
+    return flask.jsonify(**rep)
+
+@app.route("/api/list-runs", methods=["GET","POST"])
+def api_list_runs():
+    archive = None
+    if "archive" in request.values:
+        archive = request.values["archive"]
+
+    #req = request.get_json()
+    get_username_from_api_request()
+    return flask.jsonify(runs=get_wingman_service().get_runs(archive))
+
+def _prepare_batch_job(username, config_defs, template_str, repo, branch, sha):
+    timestamp = get_current_timestamp()
+    parameter_hash = save_submit_parameters(config_defs, template_str, repo, branch, sha)
+    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str, timestamp, {"repo": repo, "branch": branch, "sha": sha, 'username': username, "parameter_hash": parameter_hash})
+    return json_and_flock
+
+def _submit_batch_job(json_and_flock, repo, branch, sha):
+    # make a temp script which performs the deploy and kicks off the jobs.  Why do it like this?  Mostly legacy because
+    # the pieces to do this are in separate scripts.  The code could be all run within this process but having it run from a script
+    # does add some isolation in case something fails in an unexpected way.  This is all a little ridiculous and hacky but it should work.
+
+    t = tempfile.NamedTemporaryFile(delete=False)
+    t.write("set -ex\n")
+    cmd = deploy_code_from_git_command(repo, branch, sha)
+    write_shell_command(t, cmd)
+    for params, flock in json_and_flock:
+        cmd, title = generate_run_command(flock, params)
+        write_shell_command(t, cmd)
+
+    t.close()
+    return t.name
+
 @app.route("/submit-batch-job", methods=["POST"])
 @secured
 def submit_batch_job():
@@ -805,30 +899,11 @@ def submit_batch_job():
     else:
         config_defs = json.loads(request.values['config_defs'])
 
-    timestamp = get_current_timestamp()
-
-    parameter_hash = save_submit_parameters(config_defs, template_str, repo, branch, sha)
-
-    json_and_flock = batch_submit.make_flock_configs(config_defs, template_str, timestamp, {"repo": repo, "branch": branch, "sha": sha, 'username': username, "parameter_hash": parameter_hash})
-
+    json_and_flock = _prepare_batch_job(username, config_defs, template_str, repo, branch, sha)
     submit = request.values['submit']
     if submit == 'submit':
-        # make a temp script which performs the deploy and kicks off the jobs.  Why do it like this?  Mostly legacy because
-        # the pieces to do this are in separate scripts.  The code could be all run within this process but having it run from a script
-        # does add some isolation in case something fails in an unexpected way.  This is all a little ridiculous and hacky but it should work.
-
-        t = tempfile.NamedTemporaryFile(delete=False)
-        t.write("set -ex\n")
-        cmd = deploy_code_from_git_command(repo, branch, sha)
-        write_shell_command(t, cmd)
-        for params, flock in json_and_flock:
-            cmd, title = generate_run_command(flock, params)
-            write_shell_command(t, cmd)
-
-        t.close()
-
-        return run_command(["bash", t.name], "submitting %d jobs" % (len(json_and_flock)))
-
+        script_name = _submit_batch_job(json_and_flock, repo, branch, sha)
+        return run_command(["bash", script_name], "submitting %d jobs" % (len(json_and_flock)))
     elif submit == 'export':
         params, flock_config = json_and_flock[0]
         response = flask.make_response(flock_config)
@@ -836,6 +911,7 @@ def submit_batch_job():
         return response
     else:
         raise Exception("invalid value for submit (%s)" % submit)
+
 
 monitor_parameters = None
 cluster_terminal = None
