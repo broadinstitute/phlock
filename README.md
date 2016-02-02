@@ -1,4 +1,4 @@
-# flock
+# phlock
 
 This is a lightweight library for executing map/reduce style jobs.  (Perhaps "scatter/gather" is a better description.)
 
@@ -49,7 +49,7 @@ The script that was executed  [run_id]/tasks/[task_id]/task.sh
 for this task.
 ```
 
-"run_id" is chosen when the "flock" command is run.  "task_id" is assigned numerically for each task, and there'll be one additional task named "gather" run after all other tasks.
+"run_id" is chosen when the "phlock" command is run.  "task_id" is assigned numerically for each task, and there'll be one additional task named "gather" run after all other tasks.
 
 The "run_id" is also interpreted as the config file which specifies what exactly should be run.  (The syntax of the file is YAML)  For example, lets 
 assume we have a basic config file named "sample" with the following content:
@@ -93,35 +93,35 @@ spawn('square.R', c(1,2,3), 'aggregate.R')
 
 The spawn method will return immediately after the jobs have been queued for execution.  There is no guarentee that anything has been run by the time the function has returned.
 
-Spawn only populates the run_dir with all the files that are needed.  After the top-level R script completes, flock will start submitting all of those tasks using which ever
+Spawn only populates the run_dir with all the files that are needed.  After the top-level R script completes, phlock will start submitting all of those tasks using which ever
 execution engine is configured.
 
 ### To start a run
 By default, will wait for all tasks to complete.  Can be safely killed after all tasks have been submitted.
 ```
-flock run config.flock
+phlock run config.flock
 ```
 If the directory for the run already exists, it will abort to prevent overwriting existing files.
 
 ### Resubmit all failed jobs for execution again.
 ```
-flock retry config.flock
+phlock retry config.flock
 ```
 
 ### To kill all running tasks associated with a run
 ```
-flock kill config.flock
+phlock kill config.flock
 ```
 
 ### To print the state of all tasks which make up this task
 ```
-flock check config.flock
+phlock check config.flock
 ```
 
 ### To monitor a run
 Will print task states until all tasks are done.  The only difference between "check" and "poll" is poll prints the status periodically until all jobs are done.
 ```
-flock poll config.flock
+phlock poll config.flock
 ```
 
 ## Tasks states
