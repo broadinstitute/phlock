@@ -72,7 +72,7 @@ class SGEQueue(AbstractQueue):
 
         job_name = "%s-%s" % (task_name, self.safe_name)
 
-        cmd = ["qsub", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", stdout_path, "-e", stderr_path]
+        cmd = ["qsub", "-terse", "-N", job_name, "-V", "-b", "n", "-cwd", "-o", stdout_path, "-e", stderr_path]
         if task_type == "scatter":
             cmd.extend(self.scatter_qsub_options)
         elif task_type == "gather":
@@ -89,7 +89,7 @@ class SGEQueue(AbstractQueue):
         # Stdout Example:
         #Your job 3 ("task.sh") has been submitted
 
-        bjob_id_pattern = re.compile("Your job (\\d+) \\(.* has been submitted.*")
+        bjob_id_pattern = re.compile("(\\d+)")
         m = bjob_id_pattern.match(stdout)
         if m == None:
             raise Exception("Could not parse output from qsub: %s" % stdout)
