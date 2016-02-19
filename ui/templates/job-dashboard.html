@@ -130,6 +130,12 @@
         <input type="hidden" name="archive_name" value="{{ archive_name }}">
     </form>
 
+    <form action="/export-job-list">
+        <input type="submit" value="Export" class="btn">
+        <input type="hidden" name="config_name" value="{{ config_name }}">
+        <input type="hidden" name="archive_name" value="{{ archive_name }}">
+    </form>
+
     {% if hidden_tags|length >0 %}
         Hidden: {% for tag in hidden_tags %} <button class="btn">{{ tag }} <span class="glyphicon glyphicon-remove"></span></button> {% endfor %}
     {% endif %}
@@ -207,7 +213,11 @@
                 </td>
                 <td>
                     {% if j.name != None %}
-                        <a class="job-name-link" href="/run/{{ j.name }}">{{ j.name }}</a>
+                        {% if archive_name != None %}
+                            <a class="job-name-link" href="/list-run-files/{{ j.name }}">{{ j.name }}</a>
+                        {% else %}
+                            <a class="job-name-link" href="/run/{{ j.name }}">{{ j.name }}</a>
+                        {% endif %}
                     {% endif %}
                 </td>
                 <td>
