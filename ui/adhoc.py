@@ -93,7 +93,10 @@ def summarize(jobs):
         for k, v in job.parameters.items():
             if type(v) == list:
                 v = tuple(v)
-            values_per_key[k].add(v)
+            try:
+                values_per_key[k].add(v)
+            except TypeError:
+                values_per_key[k].add(str(v))
 
     # second pass: add "" whenever a tag is missing
     for job in jobs:
