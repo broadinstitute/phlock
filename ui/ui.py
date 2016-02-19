@@ -445,7 +445,9 @@ def get_wingman_service():
     return wingman_service_factory()
 
 def get_jobs_from_remote(archive_name=None):
-    return get_wingman_service().get_runs(archive_name)
+    jobs = get_wingman_service().get_runs(archive_name)
+    jobs.sort(lambda a, b: cmp(b["name"],a["name"]))
+    return jobs
 
 def get_run_files_path(run_name):
     return config['TARGET_ROOT'] + "/" + run_name + "/files"
@@ -535,9 +537,43 @@ def load_projections():
     
     return cached_projections
     
+@app.route("/export-job-list")
+def export_job_list():
+    archive_name = request.values.get("archive_name")
+    if archive_name == "":
+        archive_name = None
+
+    existing_jobs = get_jobs_from_remote(archive_name)
+
+    column_names = set()
+    for job in existing_jobs:
+        column_names.update(job["parameters"].keys())
+
+    # make sure run_id is the first
+    column_names.remove("run_id")
+    column_names = ["run_id"] + list(column_names)
+    import StringIO
+    buffer = StringIO.StringIO()
+    import csv
+    w = csv.writer(buffer)
+    w.writerow(column_names)
+    for job in existing_jobs:
+        p = job["parameters"]
+        row = [p.get(c) for c in column_names]
+        w.writerow(row)
+
+    response = flask.make_response(buffer.getvalue())
+    response.headers["Content-Disposition"] = "attachment; filename=jobs.csv"
+    return response
 
 @app.route("/job-dashboard")
 def job_dashboard():
+    archive_name = request.values.get("archive_name")
+    if archive_name == "":
+        archive_name = None
+
+    existing_jobs = get_jobs_from_remote(archive_name)
+
     hidden_tags = []
     if "hidden_tags" in flask.session:
         hidden_tags = flask.session["hidden_tags"]
@@ -561,11 +597,6 @@ def job_dashboard():
     config_name = request.values.get("config_name")
     if config_name == "":
         config_name = None
-    archive_name = request.values.get("archive_name")
-    if archive_name == "":
-        archive_name = None
-
-    existing_jobs = get_jobs_from_remote(archive_name)
 
     # overlay the tags with 'added_tags'
     for job in existing_jobs:
@@ -1056,7 +1087,7 @@ def show_task_profile(run_name, task_dir):
     #     color="lightblue")
 
     file_path = task_dir+"/proc_stats.txt"
-    cpu_series, mem_series = read_task_profile(config['TARGET_ROOT'] + "/" + run_name + "/files", file_path=file_path)
+    cpu_series, mem_series = read_task_profile(run_name, file_path=file_path)
     return flask.render_template("task_profile.html", run_name=run_name, cpu_series=cpu_series, mem_series=mem_series)
 
 @app.route("/prices")
