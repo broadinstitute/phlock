@@ -80,6 +80,15 @@ MIGRATIONS = [
         "CREATE INDEX IDX_RUN_ID ON TASKS (run_id)",
         "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
         "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
+        "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)"]),
+     ("003-add-kill-requested", [
+        "ALTER TABLE TASKS RENAME TO OLD_TASKS_20160225",
+        "CREATE TABLE TASKS (run_id INTEGER, task_dir STRING primary key, status INTEGER, try_count INTEGER, node_name STRING, external_id STRING, group_number INTEGER, update_time NUMBER, kill_requested DEFAULT 'N' )",
+        "INSERT INTO TASKS (run_id, task_dir, status, try_count, node_name, external_id, group_number, update_time) SELECT run_id, task_dir, status, try_count, node_name, external_id, group_number, update_time FROM OLD_TASKS_20160225",
+        "DROP TABLE OLD_TASKS_20160225",
+        "CREATE INDEX IDX_RUN_ID ON TASKS (run_id)",
+        "CREATE INDEX IDX_TASK_DIR ON TASKS (task_dir)",
+        "CREATE INDEX IDX_EXTERNAL_ID ON TASKS (external_id)",
         "CREATE INDEX IDX_NODE_NAME ON TASKS (node_name)"])
 ]
 
@@ -468,7 +477,7 @@ class TaskStore:
 
     def node_disappeared(self, node_name):
         with self.transaction() as db:
-            db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE node_name = ? and status in (?, ?)", [time.time(), WAITING, node_name, STARTED, MISSING])
+            db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE node_name = ? and status in (?, ?) and kill_requested = 'N'", [time.time(), WAITING, node_name, STARTED, MISSING])
         return True
 
     def retry_run(self, run_dir):
@@ -478,7 +487,7 @@ class TaskStore:
             if len(rows) == 1:
                 run_id = rows[0][0]
                 # treating MISSING as the same as FAILED.  Perhaps there should be something that transforms MISSING tasks to FAILED after some timeout
-                db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE run_id = ? and status in (?, ?, ?, ?, ?)", [time.time(), WAITING, run_id, FAILED, KILLED, MISSING, PREREQ_FAILED, QUOTA_EXCEEDED])
+                db.execute("UPDATE TASKS SET update_time = ?, status = ?, kill_requested = 'N' WHERE run_id = ? and status in (?, ?, ?, ?, ?)", [time.time(), WAITING, run_id, FAILED, KILLED, MISSING, PREREQ_FAILED, QUOTA_EXCEEDED])
         return True
 
     def kill_run(self, run_dir):
@@ -488,8 +497,8 @@ class TaskStore:
             if len(rows) == 1:
                 run_id = rows[0][0]
 
-                db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE run_id = ? and status in (?, ?)", [time.time(), KILL_PENDING, run_id, SUBMITTED, STARTED])
-                db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE run_id = ? and status in (?, ?)", [time.time(), KILLED, run_id, READY, WAITING])
+                db.execute("UPDATE TASKS SET update_time = ?, status = ?, kill_requested = 'Y' WHERE run_id = ? and status in (?, ?)", [time.time(), KILL_PENDING, run_id, SUBMITTED, STARTED])
+                db.execute("UPDATE TASKS SET update_time = ?, status = ?, kill_requested = 'Y' WHERE run_id = ? and status in (?, ?)", [time.time(), KILLED, run_id, READY, WAITING])
 
                 # wake up main loop which is going to perform the actual killing
                 self._cv_created.notify_all()
@@ -566,6 +575,7 @@ class TaskStore:
 def handle_kill_pending_tasks(store, queue, batch_size=100):
     external_id_and_task_dirs = dict(store.find_tasks_external_id_by_status(KILL_PENDING, limit=batch_size))
     log.info("handle_kill_pending_tasks: %s", repr(external_id_and_task_dirs))
+    needed_to_kill_tasks = False
     if len(external_id_and_task_dirs) > 0:
         # strip off the queue prefix
         external_ids = [external_id.split(":")[1] for external_id in external_id_and_task_dirs.keys()]
@@ -576,10 +586,12 @@ def handle_kill_pending_tasks(store, queue, batch_size=100):
         # just let the jobs transition to MISSING in next periodic check.  Should we explictly mark these as killed?
         # seems like many ways for that to fall out of sync with the backend queue if we set it to killed without checking
 
-    for external_id, task_dir in external_id_and_task_dirs.items():
-        store.set_task_status(task_dir, KILL_SUBMITTED)
+        for external_id, task_dir in external_id_and_task_dirs.items():
+            store.set_task_status(task_dir, KILL_SUBMITTED)
 
-    return False
+        needed_to_kill_tasks = True
+
+    return needed_to_kill_tasks
 
 def update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, state_to_use_if_missing):
     external_ids_of_those_we_think_are_submitted = set(external_id_to_task_dir.keys())
@@ -639,33 +651,39 @@ def update_waiting_tasks(store):
             log.debug("Could not run %s because needs to wait for another job", task_dir)
 
 def submit_created_tasks(listener, store, queue_factory, max_submitted):
-    submitted_count = len(store.find_tasks_by_status(SUBMITTED))
-
     # process all the waiting to make sure they've met their requirements
     update_waiting_tasks(store)
 
-    # submit any ready tasks
-    submit_count = max(0, max_submitted-submitted_count)
-    tasks = store.find_tasks_by_status(READY, limit=submit_count)
-    log.info("Found %d READY tasks", len(tasks))
-    queue_cache = {}
-    for run_id, task_dir, group in tasks:
-        try:
-            if not (run_id in queue_cache):
-                log.info("Creating queue missing from cache for %s", run_id)
-                run_dir, config_path = store.get_config_path(run_id)
-                required_mem_override = store.get_required_mem_override(run_id)
+    while True:
+        submitted_count = len(store.find_tasks_by_status(SUBMITTED))
 
-                config = flock_config.load_config([config_path], run_dir, {})
-                queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.gather_qsub_options, config.name, config.workdir, required_mem_override)
-                queue_cache[run_id] = queue
+        # submit any ready tasks, making sure to not exceed max_submitted
+        submit_count = max(0, max_submitted-submitted_count)
 
-            queue = queue_cache[run_id]
+        # only pull out the jobs in batches of 100 in case the status changes while we're submitting them
+        submit_count = min(100, submit_count)
+        tasks = store.find_tasks_by_status(READY, limit=submit_count)
+        log.info("Found %d READY tasks (capped at %d tasks)", len(tasks), submit_count)
+        if len(tasks) == 0:
+            break
+        queue_cache = {}
+        for run_id, task_dir, group in tasks:
+            try:
+                if not (run_id in queue_cache):
+                    log.info("Creating queue missing from cache for %s", run_id)
+                    run_dir, config_path = store.get_config_path(run_id)
+                    required_mem_override = store.get_required_mem_override(run_id)
 
-            queue.submit(run_id, os.path.join(run_dir, task_dir), flock.guess_task_type(task_dir))
-        except:
-            log.exception("Got exception submitting %s %s", run_dir, task_dir)
-            store.set_task_status(task_dir, FAILED)
+                    config = flock_config.load_config([config_path], run_dir, {})
+                    queue = queue_factory(listener, config.qsub_options, config.scatter_qsub_options, config.gather_qsub_options, config.name, config.workdir, required_mem_override)
+                    queue_cache[run_id] = queue
+
+                queue = queue_cache[run_id]
+
+                queue.submit(run_id, os.path.join(run_dir, task_dir), flock.guess_task_type(task_dir))
+            except:
+                log.exception("Got exception submitting %s %s", run_dir, task_dir)
+                store.set_task_status(task_dir, FAILED)
 
 
 def main_loop(endpoint_url, flock_home, store, max_submitted, localQueue = False):
