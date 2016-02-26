@@ -119,14 +119,14 @@ class VolumeHistory:
 #            print "history", history
             latest_free = history[-1][1]
             history = self._get_monotomic_history(history)
-            print "montomic", history
+            #print "montomic", history
             minutes_until_exhaustion = None
 
             if len(history) > 1:
                 time_delta = history[-1][0] - history[0][0]
                 free_delta = history[0][1] - history[-1][1]
                 bytes_per_minute = float(free_delta) / ( time_delta / 60.0 )
-                print "free_delta", free_delta, "time_delta", time_delta, "byte_per_minute", bytes_per_minute, "latest_free", latest_free
+                #print "free_delta", free_delta, "time_delta", time_delta, "byte_per_minute", bytes_per_minute, "latest_free", latest_free
                 if bytes_per_minute > 0:
                     minutes_until_exhaustion = latest_free / bytes_per_minute
 
