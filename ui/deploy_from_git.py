@@ -42,6 +42,7 @@ def deploy_code_from_git(sha_code_dir, repo, branch):
         with cd(temp_code_dir):
             run("unzip "+target_zip_file)
 
+        run("if [ -r {temp_code_dir}/setup_for_clusterui_run.sh ]; then cd {temp_code_dir} && bash {temp_code_dir}/setup_for_clusterui_run.sh ; fi".format(temp_code_dir=temp_code_dir))
         run("mv "+temp_code_dir+" "+sha_code_dir)
         run("rm "+target_zip_file)
     else:
