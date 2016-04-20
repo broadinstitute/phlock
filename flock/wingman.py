@@ -627,6 +627,7 @@ def identify_tasks_which_disappeared(store, queue):
 def update_waiting_tasks(store):
     waiting_tasks = store.find_tasks_by_status(WAITING)
     log.info("Found %d WAITING tasks", len(waiting_tasks))
+    start_time = time.time()
     for run_id, task_dir, group in waiting_tasks:
         counts_by_group = store.count_tasks_by_group_number(run_id)
 
@@ -649,6 +650,10 @@ def update_waiting_tasks(store):
             store.set_task_status(task_dir, READY)
         else:
             log.debug("Could not run %s because needs to wait for another job", task_dir)
+        
+        if time.time()-start_time > 30:
+            log.info("update_waiting_tasks took longer than 30 seconds, returning control to main loop")
+            break
 
 def submit_created_tasks(listener, store, queue_factory, max_submitted):
     # process all the waiting to make sure they've met their requirements
