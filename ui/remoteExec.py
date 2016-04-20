@@ -41,6 +41,7 @@ def deploy_code_from_git(code_dir, repo, sha, branch):
             run("unzip "+target_zip_file)
 
         run("mv "+temp_code_dir+" "+sha_code_dir)
+        run("if [ -r {temp_code_dir}/setup_for_clusterui_run.sh ]; then cd {temp_code_dir } && bash {temp_code_dir} ; fi".format(temp_code_dir=temp_code_dir))
         run("rm "+target_zip_file)
     else:
         log.warn("Code already deployed to %s, skipping deploy" % sha_code_dir)
