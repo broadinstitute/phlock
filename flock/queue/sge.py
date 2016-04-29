@@ -86,9 +86,6 @@ class SGEQueue(AbstractQueue):
         handle = subprocess.Popen(cmd, stdout=subprocess.PIPE, cwd=self.workdir)
         stdout, stderr = handle.communicate()
 
-        # Stdout Example:
-        #Your job 3 ("task.sh") has been submitted
-
         bjob_id_pattern = re.compile("(\\d+)")
         m = bjob_id_pattern.match(stdout)
         if m == None:

@@ -41,7 +41,7 @@ def test_get_jobs():
     assert len(jobs) == 1
 
 
-qsub_popen_mock = mock_popen("Your job 3 (\"name\") has been submitted")
+qsub_popen_mock = mock_popen("3")
 
 
 @mock.patch("subprocess.Popen", qsub_popen_mock)
@@ -51,7 +51,7 @@ def test_add_to_queue():
     queue.add_to_queue("/home/task", "normal", "/home/task/task.sh", "/home/task/stdout.txt", "/home/task/stderr.txt")
 
     qsub_popen_mock.assert_called_once_with(
-        ["qsub", "-N", "task-name", "-V", "-b", "n", "-cwd", "-o", "/home/task/stdout.txt", "-e",
+        ["qsub", '-terse',"-N", "task-name", "-V", "-b", "n", "-cwd", "-o", "/home/task/stdout.txt", "-e",
          "/home/task/stderr.txt", "/home/task/task.sh"], stdout=subprocess.PIPE, cwd="workdir")
 
 

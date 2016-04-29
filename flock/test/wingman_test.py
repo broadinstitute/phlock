@@ -58,7 +58,7 @@ def test_archive_run():
     assert len(store.get_runs("test_archive")) == 1
 
     # make sure we got the config file
-    assert os.path.exists(os.path.join(new_dir, "config"))
+    assert os.path.exists(os.path.join(new_dir, "../config"))
 
     print "get_run", store.get_run("name")
 
