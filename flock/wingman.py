@@ -256,6 +256,14 @@ class TaskStore:
             db.execute("UPDATE RUNS SET added_tags = ? WHERE name = ?", [added_tags_json, name])
             return True
 
+    def get_active_runs(self):
+        # only those with an archive_name of null, implying they might have running tasks
+        with self.transaction() as db:
+            query = "SELECT run_id FROM RUNS WHERE archive_name IS NULL"
+            db.execute(query, [])
+            rows = db.fetchall()
+        return [x[0] for x in rows]
+
     def get_runs(self, archive_name=None):
         with self.transaction() as db:
             params = []
@@ -454,6 +462,13 @@ class TaskStore:
         return True
 
 
+    def set_tasks_status(self, task_dirs, status):
+        now = time.time()
+        params = [(now, status, task_dir) for task_dir in task_dirs]
+        with self.transaction() as db:
+            db.executemany("UPDATE TASKS SET update_time = ?, status = ? WHERE task_dir = ?", params)
+        return True
+
     def set_task_status(self, task_dir, status):
         with self.transaction() as db:
             db.execute("UPDATE TASKS SET update_time = ?, status = ? WHERE task_dir = ?", [time.time(), status, task_dir])
@@ -505,15 +520,31 @@ class TaskStore:
 
         return True
 
-    def find_tasks_by_status(self, status, limit=None):
+    def find_prev_group_status(self, run_id, group_number):
+        query = "SELECT status, count(1) FROM tasks WHERE run_id = ? and group_number < ? group by status"
+        params = [run_id, group_number]
+
+        with self.transaction() as db:
+            db.execute(query, params)
+            recs = db.fetchall()
+        return recs
+
+    def find_tasks_by_status(self, status, limit=None, run_id=None):
         if limit == 0:
             return []
 
         query = "SELECT run_id, task_dir, group_number FROM tasks WHERE status = ?"
+        params = [status]
+
         if limit != None:
             query += " limit %d" % limit
+
+        if run_id != None:
+            query += " and run_id = ?"
+            params.append(run_id)
+
         with self.transaction() as db:
-            db.execute(query, [status])
+            db.execute(query, params)
             recs = db.fetchall()
         return recs
 
@@ -624,36 +655,42 @@ def identify_tasks_which_disappeared(store, queue):
     external_id_to_task_dir = dict(store.find_tasks_external_id_by_status(KILL_SUBMITTED))
     update_tasks_which_disappeared(store, external_ids_of_actually_in_queue, external_id_to_task_dir, KILLED)
 
+def update_waiting_tasks_for_run(store, run_id):
+    tasks = store.find_tasks_by_status(WAITING, run_id=run_id)
+    if len(tasks) == 0:
+        return
+
+    # group by group number
+    by_group = collections.defaultdict(lambda: [])
+    for run_id, task_dir, group_number in tasks:
+        by_group[group_number].append(task_dir)
+
+    any_killed = False
+    any_failed = False
+    any_running = False
+
+    min_waiting_group = min(by_group.keys())
+    for status, count in store.find_prev_group_status(run_id, min_waiting_group):
+        if status in [KILLED, KILL_PENDING, KILL_SUBMITTED]:
+            any_killed = True
+        elif status in [FAILED, QUOTA_EXCEEDED]:
+            any_failed = True
+        elif status in [READY, SUBMITTED, STARTED]:
+            any_running = True
+
+    task_dirs = by_group[min_waiting_group]
+
+    if any_killed:
+        store.set_tasks_status(task_dirs, KILLED)
+    elif any_failed:
+        store.set_tasks_status(task_dirs, PREREQ_FAILED)
+    elif not any_running:
+        store.set_tasks_status(task_dirs, READY)
+
 def update_waiting_tasks(store):
-    waiting_tasks = store.find_tasks_by_status(WAITING)
-    log.info("Found %d WAITING tasks", len(waiting_tasks))
-    start_time = time.time()
-    for run_id, task_dir, group in waiting_tasks:
-        counts_by_group = store.count_tasks_by_group_number(run_id)
-
-        # check to make sure that we've completed everything in groups earlier then this one
-        prereq_finished = True
-        prereq_failed = False
-        for other_group, counts in counts_by_group.items():
-            if other_group >= group:
-                continue
-            finished_count, failed_count, running_count, waiting_count = counts
-            if failed_count > 0:
-                prereq_failed = True
-            elif running_count > 0 or waiting_count > 0:
-                prereq_finished = False
-
-        if prereq_failed:
-            store.set_task_status(task_dir, PREREQ_FAILED)
-        elif prereq_finished:
-            log.info("Transitioning %s to READY. [counts_by_group=%s]", task_dir, counts_by_group)
-            store.set_task_status(task_dir, READY)
-        else:
-            log.debug("Could not run %s because needs to wait for another job", task_dir)
-        
-        if time.time()-start_time > 30:
-            log.info("update_waiting_tasks took longer than 30 seconds, returning control to main loop")
-            break
+    run_ids = store.get_active_runs()
+    for run_id in run_ids:
+        update_waiting_tasks_for_run(store, run_id)
 
 def submit_created_tasks(listener, store, queue_factory, max_submitted):
     # process all the waiting to make sure they've met their requirements
