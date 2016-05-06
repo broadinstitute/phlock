@@ -31,7 +31,7 @@ def get_uptime():
     with open('/proc/uptime', 'r') as f:
       return float(f.readline().split()[0])
 
-def poll(cluster, region, key, secret, domain, topic, max_time_since_heartbeat):
+def poll(cluster, region, key, secret, domain, topic, url_to_show, max_time_since_heartbeat):
     msg = None
 
     timestamp = get_last_heartbeat(region, key, secret, domain)
@@ -42,17 +42,17 @@ def poll(cluster, region, key, secret, domain, topic, max_time_since_heartbeat):
         msg = "Could not find last heartbeat"
     elif now < (timestamp - 60):
         msg = "Got timestamp from the future: now=%s, timestamp=%s" % (now, timestamp)
-    elif ((now - timestamp) > 2*max_time_since_heartbeat) and uptime > max_time_since_heartbeat:
+    elif ((now - timestamp) > 3*max_time_since_heartbeat) and uptime > (2*max_time_since_heartbeat):
         msg = "Last heartbeat was very old!  Shutting down.  (Last heartbeat is %.1f minutes old)" % ((now-timestamp)/60.0)
         shutdown = True
     elif (now - timestamp) > max_time_since_heartbeat:
-        msg = "Last heartbeat is %.1f seconds old" % ((now-timestamp)/60.0)
+        msg = "Last heartbeat is %.1f minutes old" % ((now-timestamp)/60.0)
 
     if msg != None:
-        return send_alert(region, key, secret, topic, "Message from %s:\n\nWas %s cluster left on by accident?\nHeartbeat check failed due to: %s" % (socket.getfqdn(), cluster, msg))
+        send_alert(region, key, secret, topic, "Message from %s:\n\nWas %s cluster left on by accident?\n%s\nHeartbeat check failed due to: %s" % (socket.getfqdn(), cluster, url_to_show, msg))
     
     if shutdown:
-        os.system("shutdown -h now")
+        os.system("sudo shutdown -h now")
 
 key="{key}"
 secret="{secret}"
@@ -60,6 +60,7 @@ topic="{topic}"
 domain="{domain}"
 region="{region}"
 cluster_name="{cluster_name}"
+url_to_show="{url_to_show}"
 
-poll(cluster_name, region, key, secret, domain, topic, 60*30)
+poll(cluster_name, region, key, secret, domain, topic, url_to_show, 60*30)
 

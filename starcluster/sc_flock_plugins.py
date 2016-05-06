@@ -80,11 +80,12 @@ class AddInitializedTag(ClusterSetup):
     self.add_tag(master, [node])
 
 class AddDeadmansSwitchCrontab(ClusterSetup):
-  def __init__(self, key, secret, topic, region='us-east-1'):
+  def __init__(self, key, secret, topic, url_to_show=None, region='us-east-1'):
     self.key = key
     self.secret = secret
     self.topic = topic
     self.region = region
+    self.url_to_show = url_to_show
   
   def setup_crontab(self, master, nodes):
     cluster_name = master.parent_cluster.name
@@ -112,13 +113,17 @@ class AddDeadmansSwitchCrontab(ClusterSetup):
       topic=self.topic,
       domain=domain,
       region=self.region,
-      cluster_name=cluster_name))
+      cluster_name=cluster_name,
+      url_to_show=self.url_to_show))
     
     script = tempfile.NamedTemporaryFile("w")
     script.write(script_body)
     script.flush()
     
     for node in nodes:
+      if node == master:
+        log.warn("Skipping deadmans cronjob for master node")
+        continue
       node.ssh.put(script.name, "/tmp/cluster_scripts/deadmanswitch-check.py")
       node.ssh.execute("chmod a+xr /tmp/cluster_scripts/deadmanswitch-check.py")
       log.warn("Adding cronjob for checking deadmans switch on %s", str(node))
