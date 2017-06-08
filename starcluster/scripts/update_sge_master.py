@@ -68,7 +68,8 @@ memory_by_instance_type = {
   "m1.small": "1.6G", "m1.medium": "3.6G", "m1.large": "7.4G", "m1.xlarge": "14.5G",
   "m3.medium": "3.75G", "m3.large":   "7.5G",  "m3.xlarge":  "15G", "m3.2xlarge": "30G",
   "c3.large":  "3.75G", "c3.xlarge":  "7.5G",  "c3.2xlarge": "15G", "c3.4xlarge": "30G",  "c3.8xlarge": "58G",
-  "r3.large": "15.25G", "r3.xlarge": "30.5G",  "r3.2xlarge": "60G", "r3.4xlarge": "122G", "r3.8xlarge": "244G"}
+  "r3.large": "15.25G", "r3.xlarge": "30.5G",  "r3.2xlarge": "60G", "r3.4xlarge": "122G", "r3.8xlarge": "244G",
+  "r4.large": "15.25G", "r4.xlarge": "30.5G",  "r4.2xlarge": "60G", "r4.4xlarge": "122G", "r4.8xlarge": "244G", "r4.16xlarge": "488G"}
 
 update_sge_master()
 for i in range(1,len(sys.argv),2):
